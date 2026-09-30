@@ -1,0 +1,16 @@
+<idea-plugin>
+    <id>org.zowe.explorer.java.sdk</id>
+    <name>Zowe Explorer - Java SDK</name>
+    <vendor>Zowe Community Prototype</vendor>
+    <description><![CDATA[
+      Clean-room IntelliJ z/OS explorer prototype using Zowe Client Java SDK 7.0.7.
+    ]]></description>
+    <depends>com.intellij.modules.platform</depends>
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Zowe Java Explorer"
+                    anchor="left"
+                    factoryClass="org.zowe.explorerjava.ZoweToolWindowFactory"
+                    canCloseContents="false"/>
+        <applicationService serviceImplementation="org.zowe.explorerjava.ZoweConnectionSettings"/>
+    </extensions>
+</idea-plugin>
