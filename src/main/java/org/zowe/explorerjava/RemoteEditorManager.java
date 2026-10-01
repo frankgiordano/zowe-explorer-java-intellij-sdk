@@ -1,6 +1,10 @@
 package org.zowe.explorerjava;
 
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.actionSystem.ActionManager;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.ex.AnActionListener;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.Document;
@@ -39,8 +43,21 @@ public final class RemoteEditorManager implements Disposable {
 
     public RemoteEditorManager(Project project) {
         this.project = project;
-        var bus = project.getMessageBus().connect(this);
-        bus.subscribe(FileDocumentManagerListener.TOPIC, new FileDocumentManagerListener() {
+        var appBus = ApplicationManager.getApplication().getMessageBus().connect(this);
+
+        // Catch Save commands (Ctrl+S / Save All / File menu) via action listener
+        appBus.subscribe(AnActionListener.TOPIC, new AnActionListener() {
+            @Override
+            public void beforeActionPerformed(@NotNull AnAction action, @NotNull AnActionEvent event) {
+                String actionId = ActionManager.getInstance().getId(action);
+                if (isSaveAction(action, actionId)) {
+                    saveAllModified();
+                }
+            }
+        });
+
+        // Catch programmatic save document events
+        appBus.subscribe(FileDocumentManagerListener.TOPIC, new FileDocumentManagerListener() {
             @Override
             public void beforeDocumentSaving(@NotNull Document document) {
                 var virtualFile = FileDocumentManager.getInstance().getFile(document);
@@ -52,14 +69,57 @@ public final class RemoteEditorManager implements Disposable {
                 }
             }
         });
+
+        var bus = project.getMessageBus().connect(this);
         bus.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override
             public void fileClosed(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
                 if (file instanceof RemoteVirtualFile remoteFile) {
+                    RemoteResource resource = resources.get(remoteFile);
+                    if (resource != null) {
+                        Document document = FileDocumentManager.getInstance().getCachedDocument(remoteFile);
+                        if (document != null && !Objects.equals(document.getText(), resource.baselineContent)) {
+                            safeSaveAsync(resource, document, document.getText());
+                        }
+                    }
                     resources.remove(remoteFile);
                 }
             }
         });
+    }
+
+    public void saveAllModified() {
+        for (Map.Entry<RemoteVirtualFile, RemoteResource> entry : resources.entrySet()) {
+            RemoteVirtualFile remoteFile = entry.getKey();
+            RemoteResource resource = entry.getValue();
+            Document document = FileDocumentManager.getInstance().getCachedDocument(remoteFile);
+            if (document == null) {
+                document = FileDocumentManager.getInstance().getDocument(remoteFile);
+            }
+            if (document != null) {
+                String localContent = document.getText();
+                if (!Objects.equals(localContent, resource.baselineContent) || isFocused(remoteFile)) {
+                    safeSaveAsync(resource, document, localContent);
+                }
+            }
+        }
+    }
+
+    private boolean isFocused(RemoteVirtualFile remoteFile) {
+        VirtualFile[] selectedFiles = FileEditorManager.getInstance(project).getSelectedFiles();
+        for (VirtualFile file : selectedFiles) {
+            if (file.equals(remoteFile)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isSaveAction(AnAction action, String actionId) {
+        if (actionId != null && actionId.toLowerCase().contains("save")) {
+            return true;
+        }
+        return action.getClass().getName().contains("Save");
     }
 
     public void openDataSet(String target, String content) {
