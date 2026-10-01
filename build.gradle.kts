@@ -22,6 +22,7 @@ dependencies {
         zipSigner()
     }
     implementation("org.zowe.client.java.sdk:zowe-client-java-sdk:7.0.7")
+    implementation("com.konghq:unirest-modules-jackson:4.4.5")
     compileOnly("org.slf4j:slf4j-api:2.0.17")
 }
 
