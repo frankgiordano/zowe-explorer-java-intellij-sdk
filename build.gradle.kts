@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask
+
 plugins {
     java
     id("org.jetbrains.intellij.platform") version "2.10.5"
@@ -48,4 +50,8 @@ intellijPlatform {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release.set(21)
+}
+
+tasks.named<RunIdeTask>("runIde") {
+    jvmArgs("-Xmx2g", "-Xms512m", "-XX:+UseG1GC")
 }

@@ -29,17 +29,38 @@ public final class ZoweConnectionSettings implements PersistentStateComponent<Zo
     }
 
     @Override
-    public StateData getState() { return state; }
+    public StateData getState() {
+        return state;
+    }
 
     @Override
-    public void loadState(@NotNull StateData state) { this.state = state; }
+    public void loadState(@NotNull StateData state) {
+        this.state = state;
+    }
 
-    public String getHost() { return state.host; }
-    public int getPort() { return state.port; }
-    public String getUser() { return state.user; }
-    public int getSshPort() { return state.sshPort; }
-    public int getSshTimeoutMillis() { return state.sshTimeoutMillis; }
-    public String getTsoAccount() { return state.tsoAccount; }
+    public String getHost() {
+        return state.host;
+    }
+
+    public int getPort() {
+        return state.port;
+    }
+
+    public String getUser() {
+        return state.user;
+    }
+
+    public int getSshPort() {
+        return state.sshPort;
+    }
+
+    public int getSshTimeoutMillis() {
+        return state.sshTimeoutMillis;
+    }
+
+    public String getTsoAccount() {
+        return state.tsoAccount;
+    }
 
     public String getPassword() {
         Credentials c = PasswordSafe.getInstance().get(new CredentialAttributes(CREDENTIAL_KEY, state.user));

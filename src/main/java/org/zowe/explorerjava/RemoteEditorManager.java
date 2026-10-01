@@ -7,11 +7,13 @@ import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileDocumentManagerListener;
 import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.PlainTextFileType;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.LightVirtualFile;
 import org.jetbrains.annotations.NotNull;
 
@@ -24,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Opens remote z/OS resources as normal IntelliJ editor tabs and writes them back
  * when IntelliJ saves the corresponding document (Ctrl+S / Save All).
- *
+ * <p>
  * Before each remote write, the current z/OS content is fetched and compared with
  * the snapshot captured after the last successful open/save. If the remote content
  * changed independently, the user must explicitly choose whether to overwrite,
@@ -37,19 +39,27 @@ public final class RemoteEditorManager implements Disposable {
 
     public RemoteEditorManager(Project project) {
         this.project = project;
-        ApplicationManager.getApplication().getMessageBus().connect(this)
-                .subscribe(FileDocumentManagerListener.TOPIC, new FileDocumentManagerListener() {
-                    @Override
-                    public void beforeDocumentSaving(@NotNull Document document) {
-                        var virtualFile = FileDocumentManager.getInstance().getFile(document);
-                        if (virtualFile instanceof RemoteVirtualFile remoteFile) {
-                            RemoteResource resource = resources.get(remoteFile);
-                            if (resource != null) {
-                                safeSaveAsync(resource, document, document.getText());
-                            }
-                        }
+        var bus = project.getMessageBus().connect(this);
+        bus.subscribe(FileDocumentManagerListener.TOPIC, new FileDocumentManagerListener() {
+            @Override
+            public void beforeDocumentSaving(@NotNull Document document) {
+                var virtualFile = FileDocumentManager.getInstance().getFile(document);
+                if (virtualFile instanceof RemoteVirtualFile remoteFile) {
+                    RemoteResource resource = resources.get(remoteFile);
+                    if (resource != null) {
+                        safeSaveAsync(resource, document, document.getText());
                     }
-                });
+                }
+            }
+        });
+        bus.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
+            @Override
+            public void fileClosed(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                if (file instanceof RemoteVirtualFile remoteFile) {
+                    resources.remove(remoteFile);
+                }
+            }
+        });
     }
 
     public void openDataSet(String target, String content) {
@@ -203,7 +213,7 @@ public final class RemoteEditorManager implements Disposable {
         }
     }
 
-    private enum RemoteKind { DATA_SET, USS }
+    private enum RemoteKind {DATA_SET, USS}
 
     private static final class RemoteResource {
         private final RemoteKind kind;

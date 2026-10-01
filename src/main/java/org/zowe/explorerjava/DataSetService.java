@@ -16,7 +16,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-/** Explorer-facing data set facade backed entirely by Zowe Client Java SDK. */
+/**
+ * Explorer-facing data set facade backed entirely by Zowe Client Java SDK.
+ */
 public final class DataSetService {
     private final DsnList list;
     private final DsnGet get;

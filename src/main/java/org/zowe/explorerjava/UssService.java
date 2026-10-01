@@ -10,7 +10,9 @@ import zowe.client.sdk.zosfiles.uss.model.UnixFile;
 
 import java.util.List;
 
-/** Explorer-facing USS facade backed entirely by Zowe Client Java SDK. */
+/**
+ * Explorer-facing USS facade backed entirely by Zowe Client Java SDK.
+ */
 public final class UssService {
     private final UssList list;
     private final UssGet get;

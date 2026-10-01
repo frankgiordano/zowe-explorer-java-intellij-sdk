@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * Explorer-facing jobs facade.
- *
+ * <p>
  * UI code intentionally does not call the SDK directly.
  */
 public final class JobService {
@@ -61,7 +61,7 @@ public final class JobService {
 
     /**
      * Performs a single job-status request.
-     *
+     * <p>
      * This is used by the IntelliJ explorer's cancellable background
      * monitoring instead of keeping a JobMonitor polling loop alive.
      */
