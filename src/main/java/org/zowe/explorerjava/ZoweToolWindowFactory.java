@@ -41,7 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Main Zowe Explorer tool window.
- *
+ * <p>
  * UI code talks only to Explorer service facades. z/OSMF access is delegated to the
  * Zowe Client Java SDK through JobService, DataSetService, and UssService.
  */
@@ -70,7 +70,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
     private final JBTextField jobPrefix = new JBTextField("*");
     /**
      * Job monitoring cadence.
-     *
+     * <p>
      * This mirrors the general approach used by the Kotlin Zowe Explorer:
      * perform periodic status requests instead of keeping one blocking
      * polling operation alive.
@@ -85,7 +85,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
     /**
      * Only one monitor thread exists for this explorer instance.
-     *
+     * <p>
      * scheduleWithFixedDelay ensures requests never overlap. A new status
      * request is not started until the previous request has completed and
      * the five-second delay has elapsed.
@@ -471,7 +471,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
     /**
      * Reset Jobs filters to defaults associated with the current connection.
-     *
+     * <p>
      * Owner defaults to the current z/OS user.
      * Job prefix defaults to "*".
      */
@@ -604,7 +604,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
     /**
      * Common JCL submission method used by both:
-     *
+     * <p>
      * 1. Jobs -> Submit JCL DSN
      * 2. Data Sets -> member right-click -> Submit as Job
      */
@@ -655,11 +655,11 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
     /**
      * Starts background monitoring for the currently selected job.
-     *
+     * <p>
      * Only one job can be monitored at a time.
-     *
+     * <p>
      * A single status request is made every five seconds until:
-     *
+     * <p>
      * 1. The job reaches OUTPUT.
      * 2. The user presses Stop Monitor.
      * 3. The connection changes.
@@ -724,7 +724,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
     /**
      * Performs one status request for the monitored job.
-     *
+     * <p>
      * scheduleWithFixedDelay uses a single monitor thread, therefore
      * requests cannot overlap even if z/OSMF takes longer than expected.
      */
@@ -803,7 +803,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 }
             });
 
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
 
             SwingUtilities.invokeLater(() -> {
 
@@ -940,7 +940,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
     /**
      * Updates the matching tree node without rebuilding the entire
      * Jobs tree every five seconds.
-     *
+     * <p>
      * This is intentionally much cheaper than refreshJobs().
      */
     private void updateJobNode(
@@ -1086,7 +1086,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
     /**
      * Saves the selected spool file to the local file system.
-     *
+     * <p>
      * Spool content is retrieved through the Zowe Client Java SDK and
      * written as UTF-8 text.
      */
@@ -1469,10 +1469,10 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
     /**
      * Submit the selected PDS/PDSE member as JCL.
-     *
+     * <p>
      * Example:
-     *
-     *   USER.JCL(MYJOB)
+     * <p>
+     * USER.JCL(MYJOB)
      */
     private void submitMemberAsJob(
             Project project,
@@ -2495,7 +2495,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
                         task.run();
 
-                    } catch (Exception ex) {
+                    } catch (Throwable ex) {
 
                         showError(
                                 project,
@@ -2506,7 +2506,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
     private void showError(
             Project project,
-            Exception ex) {
+            Throwable ex) {
 
         SwingUtilities.invokeLater(() -> {
 
@@ -2649,7 +2649,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
     @FunctionalInterface
     private interface ThrowingRunnable {
 
-        void run() throws Exception;
+        void run() throws Throwable;
     }
 
     // -------------------------------------------------------------------------

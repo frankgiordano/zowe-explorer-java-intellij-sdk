@@ -5,7 +5,8 @@ import zowe.client.sdk.core.ZosConnection;
 import zowe.client.sdk.core.ZosConnectionFactory;
 
 public final class ZoweConnectionProvider {
-    private ZoweConnectionProvider() {}
+    private ZoweConnectionProvider() {
+    }
 
     public static ZosConnection current() {
         ZoweConnectionSettings s = ZoweConnectionSettings.getInstance();

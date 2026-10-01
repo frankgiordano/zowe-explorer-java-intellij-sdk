@@ -34,13 +34,20 @@ public final class ConnectionDialog extends DialogWrapper {
     @Override
     protected @Nullable JComponent createCenterPanel() {
         JPanel p = new JPanel(new GridLayout(7, 2, 8, 8));
-        p.add(new JLabel("z/OS host")); p.add(host);
-        p.add(new JLabel("z/OSMF port")); p.add(port);
-        p.add(new JLabel("User")); p.add(user);
-        p.add(new JLabel("Password")); p.add(password);
-        p.add(new JLabel("TSO account")); p.add(tsoAccount);
-        p.add(new JLabel("SSH port")); p.add(sshPort);
-        p.add(new JLabel("SSH timeout (ms)")); p.add(sshTimeout);
+        p.add(new JLabel("z/OS host"));
+        p.add(host);
+        p.add(new JLabel("z/OSMF port"));
+        p.add(port);
+        p.add(new JLabel("User"));
+        p.add(user);
+        p.add(new JLabel("Password"));
+        p.add(password);
+        p.add(new JLabel("TSO account"));
+        p.add(tsoAccount);
+        p.add(new JLabel("SSH port"));
+        p.add(sshPort);
+        p.add(new JLabel("SSH timeout (ms)"));
+        p.add(sshTimeout);
         return p;
     }
 
