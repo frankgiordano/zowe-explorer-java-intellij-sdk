@@ -21,12 +21,16 @@ import zowe.client.sdk.zosjobs.model.Job;
 import zowe.client.sdk.zosjobs.model.JobFile;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Executors;
@@ -374,6 +378,9 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         JButton spoolContent =
                 new JButton("Open Spool");
 
+        JButton saveSpool =
+                new JButton("Save Spool As...");
+
         refresh.addActionListener(
                 e -> refreshJobs(project));
 
@@ -410,6 +417,9 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         spoolContent.addActionListener(
                 e -> loadSelectedSpool(project));
 
+        saveSpool.addActionListener(
+                e -> saveSelectedSpool(project));
+
         filterToolbar.add(
                 new JBLabel("Owner:"));
 
@@ -427,6 +437,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         actionToolbar.add(jcl);
         actionToolbar.add(spool);
         actionToolbar.add(spoolContent);
+        actionToolbar.add(saveSpool);
 
         north.add(filterToolbar);
         north.add(actionToolbar);
@@ -1071,6 +1082,156 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                         "Loaded spool content.");
             });
         });
+    }
+
+    /**
+     * Saves the selected spool file to the local file system.
+     *
+     * Spool content is retrieved through the Zowe Client Java SDK and
+     * written as UTF-8 text.
+     */
+    private void saveSelectedSpool(
+            final Project project) {
+
+        final DefaultMutableTreeNode node =
+                selectedNode(jobsTree);
+
+        if (node == null
+                || !(node.getUserObject()
+                instanceof SpoolNode spool)) {
+
+            Messages.showInfoMessage(
+                    project,
+                    "Select a spool file first.",
+                    "Zowe Java Explorer");
+
+            return;
+        }
+
+        final JobFile file =
+                spool.file;
+
+        /*
+         * Build a useful default file name such as:
+         *
+         * MYJOB_JOB12345_JESMSGLG.txt
+         */
+        final String defaultFileName =
+                safeFileName(
+                        file.getJobName()
+                                + "_"
+                                + file.getJobId()
+                                + "_"
+                                + file.getDdName()
+                                + ".txt");
+
+        final JFileChooser chooser =
+                new JFileChooser();
+
+        chooser.setDialogTitle(
+                "Save Spool Output");
+
+        chooser.setSelectedFile(
+                new java.io.File(
+                        defaultFileName));
+
+        chooser.setFileFilter(
+                new FileNameExtensionFilter(
+                        "Text Files (*.txt)",
+                        "txt"));
+
+        final int result =
+                chooser.showSaveDialog(
+                        jobsTree);
+
+        if (result
+                != JFileChooser.APPROVE_OPTION) {
+
+            return;
+        }
+
+        final Path destination =
+                chooser.getSelectedFile()
+                        .toPath();
+
+        /*
+         * Confirm before replacing an existing local file.
+         */
+        if (Files.exists(destination)) {
+
+            final int overwrite =
+                    Messages.showYesNoDialog(
+                            project,
+                            "The file already exists:\n\n"
+                                    + destination
+                                    + "\n\nOverwrite it?",
+                            "Save Spool Output",
+                            Messages.getQuestionIcon());
+
+            if (overwrite
+                    != Messages.YES) {
+
+                return;
+            }
+        }
+
+        setState(
+                "Downloading spool "
+                        + file.getDdName()
+                        + " for "
+                        + file.getJobName()
+                        + " / "
+                        + file.getJobId()
+                        + "...");
+
+        /*
+         * The z/OSMF request and local disk write both run off the EDT.
+         */
+        runBackground(project, () -> {
+
+            final String content =
+                    new JobService(
+                            ZoweConnectionProvider.current())
+                            .getSpool(file);
+
+            Files.writeString(
+                    destination,
+                    content,
+                    StandardCharsets.UTF_8);
+
+            SwingUtilities.invokeLater(() -> {
+
+                setState(
+                        "Saved spool "
+                                + file.getDdName()
+                                + " to "
+                                + destination
+                                + ".");
+
+                Messages.showInfoMessage(
+                        project,
+                        "Spool output saved to:\n\n"
+                                + destination,
+                        "Zowe Java Explorer");
+            });
+        });
+    }
+
+    /**
+     * Removes characters that are unsafe in Windows/local file names.
+     */
+    private static String safeFileName(
+            final String value) {
+
+        if (value == null
+                || value.isBlank()) {
+
+            return "spool.txt";
+        }
+
+        return value.replaceAll(
+                "[\\\\/:*?\"<>|]",
+                "_");
     }
 
     private void showSelectedJobNode() {
