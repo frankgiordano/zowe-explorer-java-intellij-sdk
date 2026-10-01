@@ -29,6 +29,11 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Main Zowe Explorer tool window.
@@ -59,6 +64,51 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
      */
     private final JBTextField jobOwner = new JBTextField();
     private final JBTextField jobPrefix = new JBTextField("*");
+    /**
+     * Job monitoring cadence.
+     *
+     * This mirrors the general approach used by the Kotlin Zowe Explorer:
+     * perform periodic status requests instead of keeping one blocking
+     * polling operation alive.
+     */
+    private static final long JOB_MONITOR_INTERVAL_SECONDS = 5L;
+
+    /**
+     * Start/Stop button for the selected job monitor.
+     */
+    private final JButton jobMonitorButton =
+            new JButton("Start Monitor");
+
+    /**
+     * Only one monitor thread exists for this explorer instance.
+     *
+     * scheduleWithFixedDelay ensures requests never overlap. A new status
+     * request is not started until the previous request has completed and
+     * the five-second delay has elapsed.
+     */
+    private final ScheduledExecutorService jobMonitorExecutor =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+
+                Thread thread =
+                        new Thread(
+                                r,
+                                "zowe-job-monitor");
+
+                thread.setDaemon(true);
+
+                return thread;
+            });
+
+    /**
+     * Used to invalidate an old polling operation immediately when the
+     * monitor is stopped or the z/OS connection changes.
+     */
+    private final AtomicLong jobMonitorGeneration =
+            new AtomicLong();
+
+    private volatile ScheduledFuture<?> jobMonitorFuture;
+
+    private volatile Job monitoredJob;
 
     // Data sets
     private final DefaultMutableTreeNode dsnRoot =
@@ -115,7 +165,14 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         Disposer.register(project, remoteEditors);
 
         Disposer.register(project, () -> {
-            CommandService service = commandService;
+
+            stopJobMonitor(false);
+
+            jobMonitorExecutor.shutdownNow();
+
+            CommandService service =
+                    commandService;
+
             if (service != null) {
                 service.close();
             }
@@ -215,6 +272,12 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                         "TSO session: stopped");
 
                 /*
+                 * A monitor belongs to the connection under which it was
+                 * started. Stop it before switching to the new connection.
+                 */
+                stopJobMonitor(false);
+
+                /*
                  * A connection change also resets the Jobs filters.
                  *
                  * The owner is always initialized from the currently
@@ -302,9 +365,6 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         JButton submit =
                 new JButton("Submit JCL DSN");
 
-        JButton monitor =
-                new JButton("Monitor to OUTPUT");
-
         JButton jcl =
                 new JButton("Show JCL");
 
@@ -329,8 +389,17 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         submit.addActionListener(
                 e -> submit(project));
 
-        monitor.addActionListener(
-                e -> monitorSelected(project));
+        jobMonitorButton.addActionListener(e -> {
+
+            if (isJobMonitorRunning()) {
+
+                stopJobMonitor(true);
+
+            } else {
+
+                startJobMonitor(project);
+            }
+        });
 
         jcl.addActionListener(
                 e -> loadJcl(project));
@@ -354,7 +423,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         filterToolbar.add(refresh);
 
         actionToolbar.add(submit);
-        actionToolbar.add(monitor);
+        actionToolbar.add(jobMonitorButton);
         actionToolbar.add(jcl);
         actionToolbar.add(spool);
         actionToolbar.add(spoolContent);
@@ -573,45 +642,310 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         });
     }
 
-    private void monitorSelected(Project project) {
+    /**
+     * Starts background monitoring for the currently selected job.
+     *
+     * Only one job can be monitored at a time.
+     *
+     * A single status request is made every five seconds until:
+     *
+     * 1. The job reaches OUTPUT.
+     * 2. The user presses Stop Monitor.
+     * 3. The connection changes.
+     * 4. The project/plugin is disposed.
+     * 5. An error occurs.
+     */
+    private void startJobMonitor(
+            final Project project) {
 
-        Job job =
+        final Job job =
                 selectedJob(project);
 
         if (job == null) {
             return;
         }
 
+        /*
+         * Defensive protection. Normally the button prevents this,
+         * but never allow two monitor schedules to coexist.
+         */
+        stopJobMonitor(false);
+
+        final long generation =
+                jobMonitorGeneration.incrementAndGet();
+
+        monitoredJob =
+                job;
+
+        /*
+         * Capture the current connection/service.
+         *
+         * If the connection changes, stopJobMonitor() invalidates
+         * this monitor before the new connection becomes active.
+         */
+        final JobService jobService =
+                new JobService(
+                        ZoweConnectionProvider.current());
+
+        jobMonitorButton.setText(
+                "Stop Monitor");
+
         setState(
-                "JobMonitor: waiting for "
+                "Monitoring "
                         + job.getJobName()
                         + " / "
                         + job.getJobId()
-                        + " to reach OUTPUT...");
+                        + " every "
+                        + JOB_MONITOR_INTERVAL_SECONDS
+                        + " seconds...");
 
-        runBackground(project, () -> {
+        jobMonitorFuture =
+                jobMonitorExecutor.scheduleWithFixedDelay(
+                        () -> pollJobStatus(
+                                project,
+                                jobService,
+                                job,
+                                generation),
+                        JOB_MONITOR_INTERVAL_SECONDS,
+                        JOB_MONITOR_INTERVAL_SECONDS,
+                        TimeUnit.SECONDS);
+    }
 
-            Job completed =
-                    new JobService(
-                            ZoweConnectionProvider.current())
-                            .waitForOutput(
-                                    job.getJobName(),
-                                    job.getJobId());
+    /**
+     * Performs one status request for the monitored job.
+     *
+     * scheduleWithFixedDelay uses a single monitor thread, therefore
+     * requests cannot overlap even if z/OSMF takes longer than expected.
+     */
+    private void pollJobStatus(
+            final Project project,
+            final JobService jobService,
+            final Job job,
+            final long generation) {
+
+        /*
+         * Monitor was stopped/replaced before this poll started.
+         */
+        if (generation
+                != jobMonitorGeneration.get()) {
+
+            return;
+        }
+
+        try {
+
+            final Job current =
+                    jobService.getStatus(
+                            job.getJobName(),
+                            job.getJobId());
+
+            /*
+             * The monitor may have been stopped while the HTTP request
+             * was executing.
+             */
+            if (generation
+                    != jobMonitorGeneration.get()) {
+
+                return;
+            }
 
             SwingUtilities.invokeLater(() -> {
 
+                /*
+                 * Avoid stale status updates if Stop Monitor was clicked
+                 * between the HTTP response and EDT processing.
+                 */
+                if (generation
+                        != jobMonitorGeneration.get()) {
+
+                    return;
+                }
+
+                updateJobNode(current);
+
                 jobDetails.setText(
-                        formatJob(completed));
+                        formatJob(current));
+
+                jobDetails.setCaretPosition(0);
+
+                final String status =
+                        current.getStatus();
+
+                if ("OUTPUT".equalsIgnoreCase(status)) {
+
+                    finishJobMonitor(
+                            current,
+                            generation);
+
+                } else {
+
+                    setState(
+                            "Monitoring "
+                                    + current.getJobName()
+                                    + " / "
+                                    + current.getJobId()
+                                    + " - status "
+                                    + status
+                                    + " ("
+                                    + JOB_MONITOR_INTERVAL_SECONDS
+                                    + " second polling)");
+                }
+            });
+
+        } catch (Exception ex) {
+
+            SwingUtilities.invokeLater(() -> {
+
+                if (generation
+                        != jobMonitorGeneration.get()) {
+
+                    return;
+                }
+
+                stopJobMonitor(false);
 
                 setState(
-                        "JobMonitor completed: "
-                                + completed.getJobName()
-                                + " / "
-                                + completed.getJobId());
+                        "Job monitor stopped due to error: "
+                                + ex.getMessage());
 
-                refreshJobs(project);
+                Messages.showErrorDialog(
+                        project,
+                        ex.toString(),
+                        "Zowe Java Explorer");
             });
-        });
+        }
+    }
+
+    /**
+     * Called when the monitored job reaches OUTPUT.
+     */
+    private void finishJobMonitor(
+            final Job job,
+            final long generation) {
+
+        if (generation
+                != jobMonitorGeneration.get()) {
+
+            return;
+        }
+
+        ScheduledFuture<?> future =
+                jobMonitorFuture;
+
+        if (future != null) {
+
+            future.cancel(false);
+        }
+
+        jobMonitorFuture =
+                null;
+
+        monitoredJob =
+                null;
+
+        /*
+         * Invalidate any queued result from this monitor.
+         */
+        jobMonitorGeneration.incrementAndGet();
+
+        jobMonitorButton.setText(
+                "Start Monitor");
+
+        setState(
+                "Job "
+                        + job.getJobName()
+                        + " / "
+                        + job.getJobId()
+                        + " reached OUTPUT.");
+    }
+
+    /**
+     * Stops the currently running monitor.
+     *
+     * @param showState true when explicitly stopped by the user;
+     *                  false for internal cleanup/connection changes
+     */
+    private void stopJobMonitor(
+            final boolean showState) {
+
+        /*
+         * Increment first so any outstanding HTTP response can no
+         * longer modify the UI.
+         */
+        jobMonitorGeneration.incrementAndGet();
+
+        ScheduledFuture<?> future =
+                jobMonitorFuture;
+
+        if (future != null) {
+
+            future.cancel(false);
+        }
+
+        Job stoppedJob =
+                monitoredJob;
+
+        jobMonitorFuture =
+                null;
+
+        monitoredJob =
+                null;
+
+        jobMonitorButton.setText(
+                "Start Monitor");
+
+        if (showState) {
+
+            if (stoppedJob != null) {
+
+                setState(
+                        "Stopped monitoring "
+                                + stoppedJob.getJobName()
+                                + " / "
+                                + stoppedJob.getJobId()
+                                + ".");
+
+            } else {
+
+                setState(
+                        "Job monitor stopped.");
+            }
+        }
+    }
+
+    /**
+     * Indicates whether a monitor schedule currently exists.
+     */
+    private boolean isJobMonitorRunning() {
+
+        ScheduledFuture<?> future =
+                jobMonitorFuture;
+
+        return future != null
+                && !future.isCancelled()
+                && !future.isDone();
+    }
+
+    /**
+     * Updates the matching tree node without rebuilding the entire
+     * Jobs tree every five seconds.
+     *
+     * This is intentionally much cheaper than refreshJobs().
+     */
+    private void updateJobNode(
+            final Job updatedJob) {
+
+        DefaultMutableTreeNode node =
+                findJobNode(updatedJob);
+
+        if (node == null) {
+            return;
+        }
+
+        node.setUserObject(
+                new JobNode(updatedJob));
+
+        jobsModel.nodeChanged(node);
     }
 
     private void loadJcl(Project project) {
