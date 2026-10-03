@@ -70,7 +70,7 @@ In the sandbox IDE:
 1. Open **View -> Tool Windows -> Zowe Java Explorer**.
 2. Click **Connection** and enter z/OSMF host, port, user, and password.
 3. Use the **Jobs**, **Data Sets**, **USS**, and **Commands** tabs.
-4. Double-click a data set/member or USS file to open it in the main IntelliJ editor.
+4. Double-click a data set/member or USS file to open it in the main IntelliJ editor. Alternatively, right-click the selected item and choose Open.
 5. Edit normally and use **Ctrl+S** or **Save All** to write the contents back to z/OS.
 
 ## Build an installable plugin ZIP
