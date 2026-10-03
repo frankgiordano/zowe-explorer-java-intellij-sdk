@@ -10,6 +10,7 @@ Clean-room IntelliJ plugin prototype powered by **Zowe Client Java SDK 7.0.7**.
 - Monitor jobs to OUTPUT with **`JobMonitor.waitByOutputStatus`**
 - Load JCL
 - Load spool file metadata and spool content
+- Save spool content to disk
 
 ### Data Sets
 - Search data sets with `DsnList`
