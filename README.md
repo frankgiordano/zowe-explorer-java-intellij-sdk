@@ -7,8 +7,8 @@ Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by [**Zowe Client Jav
 
 ## Main Demo
 
-![Demo](https://github.com/frankgiordano/zowe-explorer-java-sdk/blob/master/demos/zowe-explorer-for-intellij.gif)
-  
+![zowe-explorer-for-intellij.gif](demos/zowe-explorer-for-intellij.gif)  
+
 ---  
   
 ## Features & Capabilities
