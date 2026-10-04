@@ -36,10 +36,18 @@ Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by [**Zowe Client Jav
 - **Archived Dataset Handling**: Gracefully handles CA Disk / DFHSM / TSO recall errors (`isArchivedError` / `isArchivedDataset`) with a **"Data Set Archived"** warning dialog and missing DSORG fallback.
 
 ### 📂 Unix System Services (USS)
-- **Directory Browsing**: Navigate directories and inspect file structures with `UssList`.
-- **Formatted File & Directory Metadata**: Displays line-by-line formatted key-value metadata when selecting a file or directory (Name, Mode, Size, User ID, User, Group ID, Group, Modified, Target).
-- **Remote File Editing**: Open USS text files with `UssGet` in normal IntelliJ editor tabs with automatic syntax highlighting.
-- **Remote Save**: Write edits back to z/OS using `UssWrite` on `Ctrl+S` / `Save All`.
+- **Directory Browsing & Smart Sorting**: Navigate directories and inspect file structures with `UssList`. Subdirectories are automatically grouped at the top followed by files, sorted alphabetically (case-insensitive).
+- **File Search & Real-Time Filtering**:
+    - **Live Client-Side Filtering**: `Filter:` text field and `Clear` button for instant, real-time tree filtering as you type. Supports wildcards (`*.sh`, `log*`, `config?.txt`) and case-insensitive substring matching.
+    - **Server-Side Search**: Passes `name` search parameters (`?name=pattern`) directly to z/OSMF via `UssListInputData` for fast server-side wildcard filtering on large mainframe directories.
+- **Context Menu CRUD Operations**:
+    - **Open**: Right-click item -> `Open` (or double-click) to open text files in editor tabs or navigate directories.
+    - **Create File...**: Right-click -> `Create File...` to create new empty files (`rw-r--r--`) via `UssCreate`. Target directory resolves dynamically (inside the folder if a directory is right-clicked, or in the current directory if a file is right-clicked).
+    - **Create Directory...**: Right-click -> `Create Directory...` to create new directories (`rwxr-xr-x`) via `UssCreate`.
+    - **Rename...**: Right-click -> `Rename...` to rename files or directories in place via `UssMove`.
+    - **Delete...**: Right-click -> `Delete...` to remove files or directories (recursively if a directory) via `UssDelete` with confirmation prompt.
+- **Lenient Control Character Parsing**: Fallback parser (`JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS`) for handling USS directory listings containing raw ASCII control characters (such as ESC `0x1B` or ANSI escape codes in file names).
+- **Remote File Editing & Save**: Open USS text files with `UssGet` in standard IntelliJ editor tabs with syntax highlighting. Write edits back to z/OS using `UssWrite` on `Ctrl+S` / `Save All`.
 
 ### ⚙️ Jobs Management
 - **List & Inspect Jobs**: Fetch z/OS jobs via `JobGet`.
@@ -62,7 +70,7 @@ Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by [**Zowe Client Jav
 - **Optimistic Concurrency & Conflict Protection**: Re-reads remote files prior to writing and compares content against the initial baseline. Prompts user with **Overwrite Remote**, **Reload Remote**, or **Cancel** if mainframe content changed concurrently.
 
 ---
-  
+
 ## Architecture
 
 ```text
@@ -71,7 +79,7 @@ IntelliJ UI (Zowe Tool Window)
   ├── Connection Profile Manager (PasswordSafe & Persistence)
   ├── JobService -------- JobGet / JobSubmit / JobMonitor
   ├── DataSetService ---- DsnList / DsnGet / DsnWrite / DsnDelete / DsnUpdate
-  ├── UssService -------- UssList / UssGet / UssWrite
+  ├── UssService -------- UssList / UssGet / UssWrite / UssCreate / UssDelete / UssMove
   ├── CommandService ---- TsoStart / TsoCmd / TsoStop / ConsoleCmd / UssCmd
   └── RemoteEditorManager
        ├── LightVirtualFile / FileEditorManager
