@@ -1,7 +1,7 @@
 
 # Zowe Explorer (Java SDK Edition)
 
-Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by **Zowe Client Java SDK 7.0.7**.
+Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by [**Zowe Client Java SDK**](https://github.com/zowe/zowe-client-java-sdk).
 
 ---
 
@@ -71,7 +71,7 @@ IntelliJ UI (Zowe Tool Window)
        ├── LightVirtualFile / FileEditorManager
        └── Action & Document Save Listeners -> DsnWrite / UssWrite
   │
-Zowe Client Java SDK 7.0.7
+Zowe Client Java SDK
   │
 z/OSMF / z/OS
 ```
