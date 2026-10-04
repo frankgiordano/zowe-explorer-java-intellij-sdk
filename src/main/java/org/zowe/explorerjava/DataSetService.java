@@ -2,10 +2,14 @@ package org.zowe.explorerjava;
 
 import zowe.client.sdk.core.ZosConnection;
 import zowe.client.sdk.rest.exception.ZosmfRequestException;
+import zowe.client.sdk.zosfiles.dsn.input.DsnDeleteInputData;
 import zowe.client.sdk.zosfiles.dsn.input.DsnDownloadInputData;
 import zowe.client.sdk.zosfiles.dsn.input.DsnListInputData;
+import zowe.client.sdk.zosfiles.dsn.input.DsnRenameInputData;
+import zowe.client.sdk.zosfiles.dsn.methods.DsnDelete;
 import zowe.client.sdk.zosfiles.dsn.methods.DsnGet;
 import zowe.client.sdk.zosfiles.dsn.methods.DsnList;
+import zowe.client.sdk.zosfiles.dsn.methods.DsnUpdate;
 import zowe.client.sdk.zosfiles.dsn.methods.DsnWrite;
 import zowe.client.sdk.zosfiles.dsn.model.Dataset;
 import zowe.client.sdk.zosfiles.dsn.model.Member;
@@ -23,11 +27,15 @@ public final class DataSetService {
     private final DsnList list;
     private final DsnGet get;
     private final DsnWrite write;
+    private final DsnDelete delete;
+    private final DsnUpdate update;
 
     public DataSetService(ZosConnection connection) {
         this.list = new DsnList(connection);
         this.get = new DsnGet(connection);
         this.write = new DsnWrite(connection);
+        this.delete = new DsnDelete(connection);
+        this.update = new DsnUpdate(connection);
     }
 
     public List<Dataset> list(String mask) throws ZosmfRequestException {
@@ -60,5 +68,19 @@ public final class DataSetService {
         } else {
             write.write(dataSetOrMember, content);
         }
+    }
+
+    public void deleteMember(String dataSet, String member) throws ZosmfRequestException {
+        DsnDeleteInputData input = DsnDeleteInputData.forMember(dataSet, member);
+        delete.delete(input);
+    }
+
+    public void renameMember(String dataSet, String oldMember, String newMember) throws ZosmfRequestException {
+        DsnRenameInputData input = DsnRenameInputData.forMember(dataSet, oldMember, newMember);
+        update.rename(input);
+    }
+
+    public void createMember(String dataSet, String member) throws ZosmfRequestException {
+        write.write(dataSet, member, "");
     }
 }

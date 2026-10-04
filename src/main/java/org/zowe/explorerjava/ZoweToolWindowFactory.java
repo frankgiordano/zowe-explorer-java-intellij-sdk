@@ -129,6 +129,11 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
     private final ComboBox<String> dsnMask =
             new ComboBox<>();
 
+    // Connections
+    private final ComboBox<ConnectionProfile> connectionCombo =
+            new ComboBox<>();
+    private boolean isUpdatingConnectionCombo = false;
+
     // USS
     private final DefaultMutableTreeNode ussRoot =
             new DefaultMutableTreeNode("USS");
@@ -257,61 +262,103 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                                 4,
                                 2));
 
-        JButton connection =
-                new JButton("Connection");
-
-        connection.addActionListener(e -> {
-
-            if (new ConnectionDialog().showAndGet()) {
-
-                CommandService old =
-                        commandService;
-
-                commandService = null;
-
-                if (old != null) {
-                    ApplicationManager
-                            .getApplication()
-                            .executeOnPooledThread(old::close);
+        connectionCombo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                Component c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof ConnectionProfile p) {
+                    setText(p.getDisplayName());
                 }
+                return c;
+            }
+        });
+        connectionCombo.setToolTipText("Select active z/OS connection");
 
-                tsoSessionState.setText(
-                        "TSO session: stopped");
+        updateConnectionCombo();
 
-                /*
-                 * A monitor belongs to the connection under which it was
-                 * started. Stop it before switching to the new connection.
-                 */
-                stopJobMonitor(false);
-
-                /*
-                 * A connection change also resets the Jobs filters.
-                 *
-                 * The owner is always initialized from the currently
-                 * configured connection user.
-                 */
-                resetJobFilters();
-
-                ZoweConnectionSettings settings =
-                        ZoweConnectionSettings.getInstance();
-
-                globalState.setText(
-                        "Connection saved for "
-                                + settings.getHost()
-                                + " as "
-                                + settings.getUser());
-
-                /*
-                 * Refresh the Jobs view immediately using the new
-                 * connection/user.
-                 */
-                refreshJobs(project);
+        connectionCombo.addActionListener(e -> {
+            if (isUpdatingConnectionCombo) {
+                return;
+            }
+            ConnectionProfile selected = (ConnectionProfile) connectionCombo.getSelectedItem();
+            if (selected != null) {
+                ZoweConnectionSettings settings = ZoweConnectionSettings.getInstance();
+                if (!selected.id.equals(settings.getActiveProfile().id)) {
+                    settings.setActiveProfileId(selected.id);
+                    onConnectionSwitched(project, "Switched active connection to " + selected.getDisplayName());
+                }
             }
         });
 
-        toolbar.add(connection);
+        JButton manage = new JButton("Manage...", AllIcons.General.Settings);
+        manage.setToolTipText("Manage connection profiles");
+
+        manage.addActionListener(e -> {
+            if (new ConnectionDialog().showAndGet()) {
+                updateConnectionCombo();
+                ConnectionProfile active = ZoweConnectionSettings.getInstance().getActiveProfile();
+                onConnectionSwitched(project, "Connection saved for " + active.getDisplayName());
+            }
+        });
+
+        toolbar.add(new JBLabel("Connection:"));
+        toolbar.add(connectionCombo);
+        toolbar.add(manage);
 
         return toolbar;
+    }
+
+    private void updateConnectionCombo() {
+        isUpdatingConnectionCombo = true;
+        try {
+            ZoweConnectionSettings settings = ZoweConnectionSettings.getInstance();
+            List<ConnectionProfile> profiles = settings.getProfiles();
+            DefaultComboBoxModel<ConnectionProfile> model = new DefaultComboBoxModel<>();
+            for (ConnectionProfile p : profiles) {
+                model.addElement(p);
+            }
+            connectionCombo.setModel(model);
+            ConnectionProfile active = settings.getActiveProfile();
+            if (active != null) {
+                connectionCombo.setSelectedItem(active);
+            }
+        } finally {
+            isUpdatingConnectionCombo = false;
+        }
+    }
+
+    private void onConnectionSwitched(Project project, String statusMessage) {
+        CommandService old = commandService;
+        commandService = null;
+
+        if (old != null) {
+            ApplicationManager
+                    .getApplication()
+                    .executeOnPooledThread(old::close);
+        }
+
+        tsoSessionState.setText("TSO session: stopped");
+
+        /*
+         * A monitor belongs to the connection under which it was
+         * started. Stop it before switching to the new connection.
+         */
+        stopJobMonitor(false);
+
+        /*
+         * A connection change also resets the Jobs filters.
+         * The owner is always initialized from the currently
+         * configured connection user.
+         */
+        resetJobFilters();
+
+        setState(statusMessage);
+
+        /*
+         * Refresh the Jobs view immediately using the new
+         * connection/user.
+         */
+        refreshJobs(project);
     }
 
     // -------------------------------------------------------------------------
@@ -1522,6 +1569,22 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         Object value =
                 node.getUserObject();
 
+        if (value instanceof DatasetNode datasetNode) {
+            if (isPds(datasetNode.dataset)) {
+                JPopupMenu menu = new JPopupMenu();
+                JMenuItem createMember = new JMenuItem("Create Member...", AllIcons.General.Add);
+                JMenuItem refreshMembers = new JMenuItem("Refresh Members", AllIcons.Actions.Refresh);
+
+                createMember.addActionListener(e -> createMemberInDataset(project, node, datasetNode));
+                refreshMembers.addActionListener(e -> loadMembersForNode(project, node, datasetNode));
+
+                menu.add(createMember);
+                menu.add(refreshMembers);
+                menu.show(event.getComponent(), event.getX(), event.getY());
+            }
+            return;
+        }
+
         /*
          * Submit-as-job is intentionally exposed only for members.
          *
@@ -1536,10 +1599,16 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 new JPopupMenu();
 
         JMenuItem open =
-                new JMenuItem("Open");
+                new JMenuItem("Open", AllIcons.Actions.MenuOpen);
 
         JMenuItem submit =
-                new JMenuItem("Submit as Job");
+                new JMenuItem("Submit as Job", AllIcons.Actions.Execute);
+
+        JMenuItem rename =
+                new JMenuItem("Rename...", AllIcons.Actions.Edit);
+
+        JMenuItem delete =
+                new JMenuItem("Delete...", AllIcons.Actions.GC);
 
         open.addActionListener(
                 e -> openDataSetSelection(project));
@@ -1549,16 +1618,161 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                         project,
                         member));
 
+        rename.addActionListener(
+                e -> renameMemberSelection(project, node, member));
+
+        delete.addActionListener(
+                e -> deleteMemberSelection(project, node, member));
+
         menu.add(open);
-
-        menu.addSeparator();
-
         menu.add(submit);
+        menu.addSeparator();
+        menu.add(rename);
+        menu.add(delete);
 
         menu.show(
                 event.getComponent(),
                 event.getX(),
                 event.getY());
+    }
+
+    private void createMemberInDataset(Project project, DefaultMutableTreeNode node, DatasetNode datasetNode) {
+        String dataSet = datasetNode.dataset.getDsname();
+
+        String input = Messages.showInputDialog(
+                project,
+                "Enter new member name to create in " + dataSet + ":",
+                "Create Member",
+                Messages.getQuestionIcon(),
+                "",
+                null);
+
+        if (input == null) {
+            return;
+        }
+
+        String newMember = input.trim().toUpperCase(Locale.ROOT);
+        if (newMember.isBlank()) {
+            return;
+        }
+
+        if (newMember.length() > 8) {
+            Messages.showErrorDialog(project, "Member name cannot exceed 8 characters.", "Invalid Member Name");
+            return;
+        }
+
+        if (!newMember.matches("^[A-Z@#\\$][A-Z0-9@#\\$]{0,7}$")) {
+            Messages.showErrorDialog(
+                    project,
+                    "Invalid z/OS member name '" + newMember + "'. Must start with A-Z, @, #, or $ and contain up to 8 alphanumeric/national characters.",
+                    "Invalid Member Name");
+            return;
+        }
+
+        setState("Creating member " + newMember + " in " + dataSet + "...");
+
+        runBackground(project, () -> {
+            try {
+                new DataSetService(ZoweConnectionProvider.current()).createMember(dataSet, newMember);
+                SwingUtilities.invokeLater(() -> {
+                    loadMembersForNode(project, node, datasetNode);
+                    setState("Created member " + newMember + " in " + dataSet + ".");
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    setState("Could not create member " + newMember + ": " + ex.getMessage());
+                    Messages.showErrorDialog(project,
+                            "Could not create member " + newMember + " in " + dataSet + ".\n\n" + ex.getMessage(),
+                            "Create Member Failed");
+                });
+            }
+        });
+    }
+
+    private void renameMemberSelection(Project project, DefaultMutableTreeNode node, MemberNode memberNode) {
+        String dataSet = memberNode.dataSetName;
+        String oldMember = memberNode.member.getMember();
+
+        String input = Messages.showInputDialog(
+                project,
+                "Enter new name for member " + dataSet + "(" + oldMember + "):",
+                "Rename Member",
+                Messages.getQuestionIcon(),
+                oldMember,
+                null);
+
+        if (input == null) {
+            return;
+        }
+
+        String newMember = input.trim().toUpperCase(Locale.ROOT);
+        if (newMember.isBlank() || newMember.equals(oldMember)) {
+            return;
+        }
+
+        if (newMember.length() > 8) {
+            Messages.showErrorDialog(project, "Member name cannot exceed 8 characters.", "Invalid Member Name");
+            return;
+        }
+
+        setState("Renaming member " + oldMember + " to " + newMember + " in " + dataSet + "...");
+
+        runBackground(project, () -> {
+            try {
+                new DataSetService(ZoweConnectionProvider.current()).renameMember(dataSet, oldMember, newMember);
+                SwingUtilities.invokeLater(() -> {
+                    DefaultMutableTreeNode parentNode = (DefaultMutableTreeNode) node.getParent();
+                    if (parentNode != null && parentNode.getUserObject() instanceof DatasetNode parentDatasetNode) {
+                        loadMembersForNode(project, parentNode, parentDatasetNode);
+                    }
+                    setState("Renamed member " + oldMember + " to " + newMember + " in " + dataSet + ".");
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    setState("Could not rename member " + oldMember + ": " + ex.getMessage());
+                    Messages.showErrorDialog(project,
+                            "Could not rename member " + oldMember + " to " + newMember + " in " + dataSet + ".\n\n" + ex.getMessage(),
+                            "Rename Member Failed");
+                });
+            }
+        });
+    }
+
+    private void deleteMemberSelection(Project project, DefaultMutableTreeNode node, MemberNode memberNode) {
+        String dataSet = memberNode.dataSetName;
+        String memberName = memberNode.member.getMember();
+
+        int choice = Messages.showYesNoDialog(
+                project,
+                "Are you sure you want to delete member '" + memberName + "' from '" + dataSet + "'?\n\nThis action cannot be undone.",
+                "Delete Member Confirmation",
+                "Delete",
+                "Cancel",
+                Messages.getWarningIcon());
+
+        if (choice != Messages.YES) {
+            return;
+        }
+
+        setState("Deleting member " + memberName + " from " + dataSet + "...");
+
+        runBackground(project, () -> {
+            try {
+                new DataSetService(ZoweConnectionProvider.current()).deleteMember(dataSet, memberName);
+                SwingUtilities.invokeLater(() -> {
+                    dsnModel.removeNodeFromParent(node);
+                    dsnDetails.setText("");
+                    setState("Deleted member " + memberName + " from " + dataSet + ".");
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    setState("Could not delete member " + memberName + ": " + ex.getMessage());
+                    Messages.showErrorDialog(project,
+                            "Could not delete member " + memberName + " from " + dataSet + ".\n\n" + ex.getMessage(),
+                            "Delete Member Failed");
+                });
+            }
+        });
     }
 
     /**
