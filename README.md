@@ -1,3 +1,4 @@
+
 # Zowe Explorer (Java SDK Edition)
 
 Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by **Zowe Client Java SDK 7.0.7**.
@@ -50,7 +51,7 @@ Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by **Zowe Client Java
 - **Optimistic Concurrency & Conflict Protection**: Re-reads remote files prior to writing and compares content against the initial baseline. Prompts user with **Overwrite Remote**, **Reload Remote**, or **Cancel** if mainframe content changed concurrently.
 
 ---
-
+  
 ## Architecture
 
 ```text
@@ -90,6 +91,8 @@ In the sandbox IDE:
 2. Click **Manage...** or **Connection** to set up a z/OS connection profile (z/OSMF host, port, credentials).
 3. Click **Test Connection** to verify settings.
 4. Browse **Data Sets**, **USS**, **Jobs**, and execute **Commands**.
+5. Double-click a data set/member or USS file to open it in the main IntelliJ editor. Alternatively, right-click the selected item and choose Open.
+6. Edit normally and use **Ctrl+S** or **Save All** to write the contents back to z/OS.
 
 ### Build Installable Plugin Package
 
