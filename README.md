@@ -43,7 +43,7 @@ Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by [**Zowe Client Jav
     - **Double-Click Workflows**: Double-clicking a job automatically fetches and expands its spool files; double-clicking a spool file opens its content directly in the details viewer.
     - **Clean Spool Labels**: Spool tree nodes display their concise `DD Name` (e.g. `JESJCL`, `JESMSGLG`, `SYSPRINT`).
     - **Formatted Spool Metadata**: Single-clicking a spool file displays formatted key-value metadata line-by-line (DD Name, Job ID, Job Name, Step Name, Proc Step, RECFM, LRECL, Byte/Record Count, Class, Records URL).
-    - **Save Spool As...**: Save spool files to local disk as text files.
+    - **Save Spool As...**: Save spool files to the local disk as text files.
 
 ### 💻 Commands & Terminals
 - **Stateful TSO Terminal**: Issue stateful TSO commands (`TsoStart`, `TsoCmd.issueCommandByTsoSessionId`, `TsoStop`) reusing a single TSO address space across commands.
