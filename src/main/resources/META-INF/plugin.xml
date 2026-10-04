@@ -1,9 +1,10 @@
 <idea-plugin>
-    <id>org.zowe.explorer.java.sdk</id>
-    <name>Zowe Explorer - Java SDK</name>
-    <vendor>Zowe Community Prototype</vendor>
+    <id>com.frankgiordano.zowe.explorer.java</id>
+    <name>Zowe Explorer (Java SDK Edition)</name>
+    <vendor url="https://github.com/frankgiordano/zowe-explorer-java-intellij-sdk">Frank Giordano</vendor>
     <description><![CDATA[
-      Clean-room IntelliJ z/OS explorer prototype using Zowe Client Java SDK 7.0.7.
+      Lightweight z/OS Explorer for IntelliJ IDEA powered by the Zowe Client Java SDK.
+      Provides Data Set browsing/editing, PDS member CRUD operations, USS browsing, stateful TSO, MVS console commands, and Job monitoring.
     ]]></description>
     <depends>com.intellij.modules.platform</depends>
     <extensions defaultExtensionNs="com.intellij">
