@@ -20,17 +20,18 @@ Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by **Zowe Client Java
 - **Double-Click Workflows**:
     - **PDS / PDSE**: Expands members directly under the dataset tree node.
     - **Sequential (PS)**: Opens the dataset directly in an IntelliJ editor tab.
-    - **Non-Sequential / Non-PDS**: Intercepts un-supported types with informative warning dialogs.
+    - **Non-Sequential / Non-PDS**: Intercepts unsupported types with informative warning dialogs.
 - **PDS Member CRUD Operations**:
     - **Create Member**: Right-click PDS node -> `Create Member...` with full z/OS member name validation (1–8 characters, uppercase/alphanumeric and national characters `@`, `#`, `$`). Uses `DsnWrite`.
-    - **Delete Member**: Right-click member node -> `Delete...` with confirmation prompt using `DsnDelete`.
-    - **Rename Member**: Right-click member node -> `Rename...` with input dialog using `DsnUpdate`.
+    - **Delete Member**: Right-click member node -> `Delete...` with a confirmation prompt using `DsnDelete`.
+    - **Rename Member**: Right-click member node -> `Rename...` with the input dialog using `DsnUpdate`.
     - **Refresh Members**: Right-click PDS node -> `Refresh Members`.
 - **ISPF Member Metadata**: Formatted line-by-line key-value metadata display (Member, Version, Mod Level, Created, Modified, Current/Initial lines, User ID, SCLM, etc.).
 - **Archived Dataset Handling**: Gracefully handles CA Disk / DFHSM / TSO recall errors (`isArchivedError` / `isArchivedDataset`) with a **"Data Set Archived"** warning dialog and missing DSORG fallback.
 
 ### 📂 Unix System Services (USS)
 - **Directory Browsing**: Navigate directories and inspect file structures with `UssList`.
+- **Formatted File & Directory Metadata**: Displays line-by-line formatted key-value metadata when selecting a file or directory (Name, Mode, Size, User ID, User, Group ID, Group, Modified, Target).
 - **Remote File Editing**: Open USS text files with `UssGet` in normal IntelliJ editor tabs with automatic syntax highlighting.
 - **Remote Save**: Write edits back to z/OS using `UssWrite` on `Ctrl+S` / `Save All`.
 
@@ -38,7 +39,11 @@ Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by **Zowe Client Java
 - **List & Inspect Jobs**: Fetch z/OS jobs via `JobGet`.
 - **Submit JCL**: Submit JCL data sets directly to JES using `JobSubmit`.
 - **Real-Time Job Monitoring**: Track jobs until `OUTPUT` status using `JobMonitor.waitByOutputStatus`.
-- **Spool Output**: View spool file metadata, view individual spool outputs, and save spool files to disk.
+- **Spool Output & Workflows**:
+    - **Double-Click Workflows**: Double-clicking a job automatically fetches and expands its spool files; double-clicking a spool file opens its content directly in the details viewer.
+    - **Clean Spool Labels**: Spool tree nodes display their concise `DD Name` (e.g. `JESJCL`, `JESMSGLG`, `SYSPRINT`).
+    - **Formatted Spool Metadata**: Single-clicking a spool file displays formatted key-value metadata line-by-line (DD Name, Job ID, Job Name, Step Name, Proc Step, RECFM, LRECL, Byte/Record Count, Class, Records URL).
+    - **Save Spool As...**: Save spool files to local disk as text files.
 
 ### 💻 Commands & Terminals
 - **Stateful TSO Terminal**: Issue stateful TSO commands (`TsoStart`, `TsoCmd.issueCommandByTsoSessionId`, `TsoStop`) reusing a single TSO address space across commands.
