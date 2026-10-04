@@ -1,111 +1,166 @@
-# Zowe Explorer - Java SDK (IntelliJ prototype)
 
-Clean-room IntelliJ plugin prototype powered by **Zowe Client Java SDK 7.0.7**.
+# Zowe Explorer (Java SDK Edition)
 
-## Included explorer areas
+Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by **Zowe Client Java SDK 7.0.7**.
 
-### Jobs
-- List jobs with `JobGet`
-- Submit JCL data sets with `JobSubmit`
-- Monitor jobs to OUTPUT with **`JobMonitor.waitByOutputStatus`**
-- Load JCL
-- Load spool file metadata and spool content
-- Save spool content to disk
+---
 
-### Data Sets
-- Search data sets with `DsnList`
-- Expand PDS/PDSE members with `DsnList.getMembers`
-- Open sequential data sets and members with `DsnGet` in normal IntelliJ editor tabs
-- Save editor changes back to z/OS with `DsnWrite` using **Ctrl+S / Save All**
+## Features & Capabilities
 
-### USS
-- List directories/files with `UssList`
-- Navigate directories
-- Open text files with `UssGet` in normal IntelliJ editor tabs
-- Detect the IntelliJ file type from USS filenames for syntax-aware editing where supported
-- Save editor changes back to z/OS with `UssWrite` using **Ctrl+S / Save All**
+### 🔌 Multi-Connection Profile Management
+- **Multiple Connection Profiles**: Create, edit, duplicate, and remove connection profiles (`ConnectionProfile` storing Host, Port, User, SSH Port, SSH Timeout, and TSO Account).
+- **Header Connection Selector**: Switch active z/OS connection profiles on the fly directly from the tool window header via a dropdown combo box.
+- **Asynchronous Test Connection**: Verify z/OSMF credentials and connection settings asynchronously from the **Connection Manager** dialog (`ConnectionDialog`).
+- **Secure Credentials**: Passwords are saved securely using IntelliJ's `PasswordSafe` service.
+- **Seamless Migration**: Automatic background migration of legacy single-connection configurations to profile-based storage.
 
-### Commands
-- **Stateful TSO terminal** using `TsoStart`, `TsoCmd.issueCommandByTsoSessionId`, and `TsoStop`
-- Reuses one TSO address space across multiple commands until explicitly stopped
-- **MVS Console** command execution with `ConsoleCmd`
-- **USS SSH** command execution with `UssCmd`
-- SSH host-key verification uses the SDK default `~/.ssh/known_hosts` behavior
-- Configurable TSO account, SSH port, and SSH timeout in the Connection dialog
+### 📁 Data Sets & PDS Member Management
+- **Search & Mask History**: Search data sets with `DsnList`. Save up to 20 recent search masks persistently across IDE restarts in an editable combobox. Context menu and trash action allow deleting individual mask entries or clearing history.
+- **Tree Node Visuals**: Clear node icons distinguishing PDS/PDSE folders (`AllIcons.Nodes.Folder`), Sequential (PS) files (`AllIcons.FileTypes.Text`), and PDS Members (`AllIcons.Nodes.C_public`).
+- **Double-Click Workflows**:
+    - **PDS / PDSE**: Expands members directly under the dataset tree node.
+    - **Sequential (PS)**: Opens the dataset directly in an IntelliJ editor tab.
+    - **Non-Sequential / Non-PDS**: Intercepts un-supported types with informative warning dialogs.
+- **PDS Member CRUD Operations**:
+    - **Create Member**: Right-click PDS node -> `Create Member...` with full z/OS member name validation (1–8 characters, uppercase/alphanumeric and national characters `@`, `#`, `$`). Uses `DsnWrite`.
+    - **Delete Member**: Right-click member node -> `Delete...` with confirmation prompt using `DsnDelete`.
+    - **Rename Member**: Right-click member node -> `Rename...` with input dialog using `DsnUpdate`.
+    - **Refresh Members**: Right-click PDS node -> `Refresh Members`.
+- **ISPF Member Metadata**: Formatted line-by-line key-value metadata display (Member, Version, Mod Level, Created, Modified, Current/Initial lines, User ID, SCLM, etc.).
+- **Archived Dataset Handling**: Gracefully handles CA Disk / DFHSM / TSO recall errors (`isArchivedError` / `isArchivedDataset`) with a **"Data Set Archived"** warning dialog and missing DSORG fallback.
 
+### 📂 Unix System Services (USS)
+- **Directory Browsing**: Navigate directories and inspect file structures with `UssList`.
+- **Remote File Editing**: Open USS text files with `UssGet` in normal IntelliJ editor tabs with automatic syntax highlighting.
+- **Remote Save**: Write edits back to z/OS using `UssWrite` on `Ctrl+S` / `Save All`.
+
+### ⚙️ Jobs Management
+- **List & Inspect Jobs**: Fetch z/OS jobs via `JobGet`.
+- **Submit JCL**: Submit JCL data sets directly to JES using `JobSubmit`.
+- **Real-Time Job Monitoring**: Track jobs until `OUTPUT` status using `JobMonitor.waitByOutputStatus`.
+- **Spool Output**: View spool file metadata, view individual spool outputs, and save spool files to disk.
+
+### 💻 Commands & Terminals
+- **Stateful TSO Terminal**: Issue stateful TSO commands (`TsoStart`, `TsoCmd.issueCommandByTsoSessionId`, `TsoStop`) reusing a single TSO address space across commands.
+- **MVS Console**: Execute MVS console commands using `ConsoleCmd`.
+- **USS SSH Terminal**: Execute remote SSH commands on z/OS Unix System Services using `UssCmd` with host-key verification (`~/.ssh/known_hosts`).
+
+### 💾 Remote Editor Integration & Concurrency Protection
+- **Global Save Interception**: Listens to IntelliJ save actions (`Ctrl+S`, `Save All`, File menu save) and application bus events (`FileDocumentManagerListener`) to write back modified remote editor tabs (`LightVirtualFile`).
+- **Auto-Save on Tab Close**: Saves modified remote editors when closing tabs.
+- **Optimistic Concurrency & Conflict Protection**: Re-reads remote files prior to writing and compares content against the initial baseline. Prompts user with **Overwrite Remote**, **Reload Remote**, or **Cancel** if mainframe content changed concurrently.
+
+---
+  
 ## Architecture
 
 ```text
-IntelliJ UI
-  |
-  +-- JobService -------- JobGet / JobSubmit / JobMonitor
-  +-- DataSetService ---- DsnList / DsnGet / DsnWrite
-  +-- UssService -------- UssList / UssGet / UssWrite
-  +-- CommandService ----- TsoStart / TsoCmd / TsoStop / ConsoleCmd / UssCmd
-  +-- RemoteEditorManager
-       +-- LightVirtualFile / FileEditorManager
-       +-- Ctrl+S / Save All -> DsnWrite or UssWrite
-  |
+IntelliJ UI (Zowe Tool Window)
+  │
+  ├── Connection Profile Manager (PasswordSafe & Persistence)
+  ├── JobService -------- JobGet / JobSubmit / JobMonitor
+  ├── DataSetService ---- DsnList / DsnGet / DsnWrite / DsnDelete / DsnUpdate
+  ├── UssService -------- UssList / UssGet / UssWrite
+  ├── CommandService ---- TsoStart / TsoCmd / TsoStop / ConsoleCmd / UssCmd
+  └── RemoteEditorManager
+       ├── LightVirtualFile / FileEditorManager
+       └── Action & Document Save Listeners -> DsnWrite / UssWrite
+  │
 Zowe Client Java SDK 7.0.7
-  |
-z/OSMF
+  │
+z/OSMF / z/OS
 ```
 
-Credentials are stored using IntelliJ `PasswordSafe`; the password is not written into project files.
+---
 
-## Run in a sandbox IntelliJ
+## Development & Building
 
-Open this project in IntelliJ IDEA, use JDK 21 as the Gradle JVM, then run the shared **Run Zowe Explorer** configuration (Gradle `runIde`).
+### Prerequisites
+- Java 21 JDK
+- IntelliJ IDEA (2025.1 or newer)
 
-Or from the project root with Gradle 8.x installed:
+### Run in Sandbox IDE
+Run the IDE sandbox using Gradle:
 
 ```bash
-gradle runIde
+gradlew runIde
 ```
-
-> Note: this source ZIP does not bundle a Gradle wrapper binary. IntelliJ can import/run the Gradle project directly, or you can generate a wrapper locally with `gradle wrapper`.
 
 In the sandbox IDE:
-
 1. Open **View -> Tool Windows -> Zowe Java Explorer**.
-2. Click **Connection** and enter z/OSMF host, port, user, and password.
-3. Use the **Jobs**, **Data Sets**, **USS**, and **Commands** tabs.
-4. Double-click a data set/member or USS file to open it in the main IntelliJ editor. Alternatively, right-click the selected item and choose Open.
-5. Edit normally and use **Ctrl+S** or **Save All** to write the contents back to z/OS.
+2. Click **Manage...** or **Connection** to set up a z/OS connection profile (z/OSMF host, port, credentials).
+3. Click **Test Connection** to verify settings.
+4. Browse **Data Sets**, **USS**, **Jobs**, and execute **Commands**.
+5. Double-click a data set/member or USS file to open it in the main IntelliJ editor. Alternatively, right-click the selected item and choose Open.
+6. Edit normally and use **Ctrl+S** or **Save All** to write the contents back to z/OS.
 
-## Build an installable plugin ZIP
+### Build Installable Plugin Package
 
 ```bash
-gradle buildPlugin
+gradlew buildPlugin
 ```
 
-The plugin ZIP is generated under:
+The compiled plugin package ZIP will be located in:
 
 ```text
-build/distributions/
+build/distributions/com.frankgiordano.zowe.explorer.java-1.0.0.zip
 ```
 
-Install it from IntelliJ with **Settings -> Plugins -> gear -> Install Plugin from Disk...**.
+To install locally in IntelliJ:
+1. Open **Settings / Preferences -> Plugins**.
+2. Click the gear icon ⚙️ and select **Install Plugin from Disk...**.
+3. Select the generated `.zip` file from `build/distributions/`.
 
-## Prototype status
+---
 
-This is not yet a full feature-for-feature replacement for Zowe Explorer IntelliJ. The current goal is to prove a consolidated architecture in which the IntelliJ UI remains independent while all z/OS service access goes through the Zowe Client Java SDK.
+## 🚀 Publishing to JetBrains Marketplace
 
-Good next additions include favorites/persistence, create/delete/rename/copy actions, richer job filtering, z/OS logs, workflows, variables, progress indicators/cancellation, TeamConfig profile import, automated tests, and richer conflict-resolution UX.
+### Option A: Manual Web Upload (Recommended for First Release)
 
+1. **Build the Plugin Distribution**:
+   ```bash
+   gradlew buildPlugin
+   ```
+   Verify that the output package `build/distributions/com.frankgiordano.zowe.explorer.java-1.0.0.zip` exists.
 
-## Remote editor behavior
+2. **Verify Plugin Compatibility**:
+   ```bash
+   gradlew verifyPlugin
+   ```
 
-Data set members and USS files are represented by IntelliJ `LightVirtualFile` instances and opened through `FileEditorManager`. A `FileDocumentManagerListener` detects normal IDE save operations and delegates persistence to `DsnWrite` or `UssWrite` on a pooled background thread.
+3. **Log in to JetBrains Marketplace**:
+   Go to [JetBrains Marketplace Publisher Portal](https://plugins.jetbrains.com/). Log in with your JetBrains Account.
 
-### Safe remote save / conflict protection
+4. **Upload New Plugin**:
+    - Click **Add Plugin** -> **Upload Plugin**.
+    - Drag and drop or upload the ZIP file from `build/distributions/`.
+    - Select license terms and complete the verification details.
+    - JetBrains will perform automated security and compatibility verification. Once approved, your plugin will be available publicly in the Marketplace.
 
-Before every remote write, the plugin re-reads the current data set/member or USS file and compares it with the baseline captured when the editor was opened or last successfully saved.
+---
 
-If the mainframe copy changed independently, the plugin blocks the write and prompts with:
+### Option B: Automated Publishing via Gradle
 
-- **Overwrite Remote** — explicitly replace the newer z/OS content with the editor content
-- **Reload Remote** — discard the editor version and load the latest z/OS content
-- **Cancel** — leave the remote resource untouched
+You can publish directly from the command line or CI/CD pipelines using the JetBrains Marketplace Publisher API token.
 
-This is content-based optimistic concurrency, so it does not require an ETag/timestamp API from the Java SDK. Remote writes remain asynchronous; network/write failures are reported after IntelliJ's local save event.
+1. **Generate Publisher Token**:
+    - Log in to [plugins.jetbrains.com](https://plugins.jetbrains.com/).
+    - Click your profile picture -> **My Tokens**.
+    - Click **Generate Token** and copy the token value.
+
+2. **Configure Token**:
+   Set the token as an environment variable or Gradle property:
+   ```bash
+   export PUBLISH_TOKEN="perm:your_jetbrains_marketplace_token"
+   ```
+
+3. **Publish Command**:
+   ```bash
+   gradlew publishPlugin -PintellijPlatform.publishing.token=$env:PUBLISH_TOKEN
+   ```
+
+---
+
+## License & Credits
+
+Powered by [Zowe Client Java SDK](https://github.com/zowe/zowe-client-java-sdk). Developed by Frank Giordano.

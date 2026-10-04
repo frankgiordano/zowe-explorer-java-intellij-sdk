@@ -30,19 +30,19 @@ dependencies {
 
 intellijPlatform {
     pluginConfiguration {
-        id = "org.zowe.explorer.java.sdk"
-        name = "Zowe Explorer - Java SDK"
+        id = "com.frankgiordano.zowe.explorer.java"
+        name = "Zowe Explorer (Java SDK Edition)"
         version = project.version.toString()
         ideaVersion {
             sinceBuild = "251"
         }
         description = """
-            A clean-room IntelliJ z/OS explorer prototype powered by the Zowe Client Java SDK.
-            Includes Jobs, Data Sets, USS browsing/editing, stateful TSO commands, MVS console commands, USS SSH commands, and JobMonitor-based job status monitoring.
+            Lightweight z/OS Explorer for IntelliJ IDEA powered by the Zowe Client Java SDK.
+            Provides Data Set browsing/editing, PDS member CRUD operations, USS browsing, stateful TSO, MVS console commands, and Job monitoring.
         """.trimIndent()
         vendor {
-            name = "Zowe Community Prototype"
-            url = "https://www.zowe.org"
+            name = "Frank Giordano"
+            url = "https://github.com/frankgiordano/zowe-explorer-java-intellij-sdk"
         }
     }
 }
