@@ -9,6 +9,9 @@ import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @State(name = "ZoweJavaExplorerSettings", storages = @Storage("zoweJavaExplorer.xml"))
 public final class ZoweConnectionSettings implements PersistentStateComponent<ZoweConnectionSettings.StateData> {
     private static final String CREDENTIAL_KEY = "Zowe Java Explorer z/OSMF";
@@ -20,6 +23,7 @@ public final class ZoweConnectionSettings implements PersistentStateComponent<Zo
         public int sshPort = 22;
         public int sshTimeoutMillis = 30000;
         public String tsoAccount = "";
+        public List<String> dsnMaskHistory = new ArrayList<>();
     }
 
     private StateData state = new StateData();
@@ -60,6 +64,43 @@ public final class ZoweConnectionSettings implements PersistentStateComponent<Zo
 
     public String getTsoAccount() {
         return state.tsoAccount;
+    }
+
+    public List<String> getDsnMaskHistory() {
+        if (state.dsnMaskHistory == null) {
+            state.dsnMaskHistory = new ArrayList<>();
+        }
+        return new ArrayList<>(state.dsnMaskHistory);
+    }
+
+    public void addDsnMaskToHistory(String mask) {
+        if (mask == null || mask.isBlank()) {
+            return;
+        }
+        String trimmed = mask.trim();
+        if (state.dsnMaskHistory == null) {
+            state.dsnMaskHistory = new ArrayList<>();
+        }
+        state.dsnMaskHistory.remove(trimmed);
+        state.dsnMaskHistory.add(0, trimmed);
+        while (state.dsnMaskHistory.size() > 20) {
+            state.dsnMaskHistory.remove(state.dsnMaskHistory.size() - 1);
+        }
+    }
+
+    public void removeDsnMaskFromHistory(String mask) {
+        if (mask == null || mask.isBlank()) {
+            return;
+        }
+        if (state.dsnMaskHistory != null) {
+            state.dsnMaskHistory.remove(mask.trim());
+        }
+    }
+
+    public void clearDsnMaskHistory() {
+        if (state.dsnMaskHistory != null) {
+            state.dsnMaskHistory.clear();
+        }
     }
 
     public String getPassword() {
