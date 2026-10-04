@@ -151,7 +151,8 @@ To install locally in IntelliJ:
    Go to [JetBrains Marketplace Publisher Portal](https://plugins.jetbrains.com/). Log in with your JetBrains Account.
 
 4. **Upload New Plugin**:
-    - Click **Add Plugin** -> **Upload Plugin**.
+    - Click your avatar/account icon in the upper-right.
+    - Look for Upload plugin rather than Add Plugin.
     - Drag and drop or upload the ZIP file from `build/distributions/`.
     - Select license terms and complete the verification details.
     - JetBrains will perform automated security and compatibility verification. Once approved, your plugin will be available publicly in the Marketplace.

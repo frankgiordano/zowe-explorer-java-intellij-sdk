@@ -2,7 +2,7 @@ import org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask
 
 plugins {
     java
-    id("org.jetbrains.intellij.platform") version "2.10.5"
+    id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
 group = "org.zowe"
@@ -62,6 +62,11 @@ intellijPlatform {
         vendor {
             name = "Frank Giordano"
             url = "https://github.com/frankgiordano/zowe-explorer-java-intellij-sdk"
+        }
+    }
+    pluginVerification {
+        ides {
+            recommended()
         }
     }
 }

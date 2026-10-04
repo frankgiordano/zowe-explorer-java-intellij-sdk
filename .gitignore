@@ -3,3 +3,7 @@ build/
 .idea/
 *.iml
 out/
+build.gradle.kts
+.intellijPlatform/
+
+
