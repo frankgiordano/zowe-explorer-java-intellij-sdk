@@ -497,6 +497,28 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         jobsTree.addTreeSelectionListener(
                 e -> showSelectedJobNode());
 
+        jobsTree.addMouseListener(
+                new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                            int row = jobsTree.getRowForLocation(e.getX(), e.getY());
+                            if (row != -1) {
+                                jobsTree.setSelectionRow(row);
+                                DefaultMutableTreeNode node = selectedNode(jobsTree);
+                                if (node != null) {
+                                    Object userObject = node.getUserObject();
+                                    if (userObject instanceof JobNode) {
+                                        loadSpoolFiles(project);
+                                    } else if (userObject instanceof SpoolNode) {
+                                        loadSelectedSpool(project);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
         JBSplitter splitter =
                 new JBSplitter(
                         false,
@@ -1305,7 +1327,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 instanceof SpoolNode s) {
 
             jobDetails.setText(
-                    s.file.toString());
+                    formatJobFile(s.file));
         }
 
         jobDetails.setCaretPosition(0);
@@ -2363,7 +2385,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 instanceof UssNode item) {
 
             ussDetails.setText(
-                    item.file.toString());
+                    formatUnixFile(item.file));
 
             ussDetails.setCaretPosition(0);
         }
@@ -3024,6 +3046,101 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 + "\n";
     }
 
+    private String formatJobFile(JobFile file) {
+        if (file == null) {
+            return "";
+        }
+        String str = file.toString();
+        if (str.startsWith("JobFile{") && str.endsWith("}")) {
+            str = str.substring(8, str.length() - 1);
+        } else if (str.contains("{") && str.endsWith("}")) {
+            str = str.substring(str.indexOf('{') + 1, str.length() - 1);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        java.util.List<String> pairs = parseKeyValuePairs(str);
+        for (String pair : pairs) {
+            int eq = pair.indexOf('=');
+            if (eq > 0) {
+                String key = pair.substring(0, eq).trim();
+                String val = pair.substring(eq + 1).trim();
+                if (val.startsWith("'") && val.endsWith("'") && val.length() >= 2) {
+                    val = val.substring(1, val.length() - 1);
+                }
+                String label = formatJobFileKeyLabel(key);
+                sb.append(String.format("%-15s: %s\n", label, val));
+            } else if (!pair.isBlank()) {
+                sb.append(pair).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String formatJobFileKeyLabel(String key) {
+        return switch (key.toLowerCase(Locale.ROOT)) {
+            case "ddname" -> "DD Name";
+            case "jobid" -> "Job ID";
+            case "jobname" -> "Job Name";
+            case "stepname" -> "Step Name";
+            case "procstep" -> "Proc Step";
+            case "subsystem" -> "Sub System";
+            case "id" -> "ID";
+            case "recfm" -> "RECFM";
+            case "lrecl" -> "LRECL";
+            case "bytecount" -> "Byte Count";
+            case "recordcount" -> "Record Count";
+            case "classs" -> "Class";
+            case "jobcorrelator" -> "Job Correlator";
+            case "recordsurl" -> "Records URL";
+            default -> key.isEmpty() ? key : Character.toUpperCase(key.charAt(0)) + key.substring(1);
+        };
+    }
+
+    private String formatUnixFile(UnixFile file) {
+        if (file == null) {
+            return "";
+        }
+        String str = file.toString();
+        if (str.startsWith("UnixFile{") && str.endsWith("}")) {
+            str = str.substring(9, str.length() - 1);
+        } else if (str.contains("{") && str.endsWith("}")) {
+            str = str.substring(str.indexOf('{') + 1, str.length() - 1);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        java.util.List<String> pairs = parseKeyValuePairs(str);
+        for (String pair : pairs) {
+            int eq = pair.indexOf('=');
+            if (eq > 0) {
+                String key = pair.substring(0, eq).trim();
+                String val = pair.substring(eq + 1).trim();
+                if (val.startsWith("'") && val.endsWith("'") && val.length() >= 2) {
+                    val = val.substring(1, val.length() - 1);
+                }
+                String label = formatUnixFileKeyLabel(key);
+                sb.append(String.format("%-10s: %s\n", label, val));
+            } else if (!pair.isBlank()) {
+                sb.append(pair).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String formatUnixFileKeyLabel(String key) {
+        return switch (key.toLowerCase(Locale.ROOT)) {
+            case "name" -> "Name";
+            case "mode" -> "Mode";
+            case "size" -> "Size";
+            case "uid" -> "User ID";
+            case "user" -> "User";
+            case "gid" -> "Group ID";
+            case "group" -> "Group";
+            case "mtime" -> "Modified";
+            case "target" -> "Target";
+            default -> key.isEmpty() ? key : Character.toUpperCase(key.charAt(0)) + key.substring(1);
+        };
+    }
+
     private static boolean isPds(Dataset dataset) {
         if (dataset == null) {
             return false;
@@ -3292,7 +3409,11 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         @Override
         public String toString() {
 
-            return file.toString();
+            String ddName = file != null ? file.getDdName() : null;
+            if (ddName != null && !ddName.isBlank()) {
+                return ddName;
+            }
+            return "SPOOL";
         }
     }
 
