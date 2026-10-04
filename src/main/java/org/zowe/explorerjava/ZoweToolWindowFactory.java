@@ -16,6 +16,7 @@ import com.intellij.ui.components.JBTextField;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import org.jetbrains.annotations.NotNull;
+import zowe.client.sdk.rest.exception.ZosmfRequestException;
 import zowe.client.sdk.zosfiles.dsn.model.Dataset;
 import zowe.client.sdk.zosfiles.dsn.model.Member;
 import zowe.client.sdk.zosfiles.uss.model.UnixFile;
@@ -23,6 +24,8 @@ import zowe.client.sdk.zosjobs.model.Job;
 import zowe.client.sdk.zosjobs.model.JobFile;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
@@ -145,6 +148,12 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             textArea(false);
     private final JBTextField ussPath =
             new JBTextField("/");
+    private final JBTextField ussFilter =
+            new JBTextField();
+    private List<UnixFile> currentUssItems =
+            List.of();
+    private String currentUssPath =
+            "/";
 
     // Commands
     private final JBTextArea tsoOutput =
@@ -2175,7 +2184,22 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                                 4,
                                 4));
 
-        JPanel toolbar =
+        JPanel north =
+                new JPanel();
+
+        north.setLayout(
+                new BoxLayout(
+                        north,
+                        BoxLayout.Y_AXIS));
+
+        JPanel pathToolbar =
+                new JPanel(
+                        new FlowLayout(
+                                FlowLayout.LEFT,
+                                4,
+                                2));
+
+        JPanel filterToolbar =
                 new JPanel(
                         new FlowLayout(
                                 FlowLayout.LEFT,
@@ -2191,7 +2215,14 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         JButton up =
                 new JButton("Up");
 
-        ussPath.setColumns(30);
+        JButton clearFilter =
+                new JButton("Clear");
+
+        ussPath.setColumns(28);
+        ussFilter.setColumns(20);
+
+        ussPath.setToolTipText("USS Directory Path, for example /u/users/fg892105 or /usr/lpp");
+        ussFilter.setToolTipText("Filter files/directories by name or pattern, for example *.sh, log, or config*");
 
         list.addActionListener(
                 e -> listUss(
@@ -2219,13 +2250,51 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                         project,
                         ussPath.getText()));
 
-        toolbar.add(
-                new JBLabel("Path:"));
+        ussFilter.addActionListener(
+                e -> listUss(
+                        project,
+                        ussPath.getText()));
 
-        toolbar.add(ussPath);
-        toolbar.add(list);
-        toolbar.add(up);
-        toolbar.add(open);
+        clearFilter.addActionListener(e -> {
+            ussFilter.setText("");
+            if (!currentUssItems.isEmpty()) {
+                applyUssFilter();
+            } else {
+                listUss(project, ussPath.getText());
+            }
+        });
+
+        ussFilter.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                applyUssFilter();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                applyUssFilter();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                applyUssFilter();
+            }
+        });
+
+        pathToolbar.add(
+                new JBLabel("Path:"));
+        pathToolbar.add(ussPath);
+        pathToolbar.add(list);
+        pathToolbar.add(up);
+        pathToolbar.add(open);
+
+        filterToolbar.add(
+                new JBLabel("Filter:"));
+        filterToolbar.add(ussFilter);
+        filterToolbar.add(clearFilter);
+
+        north.add(pathToolbar);
+        north.add(filterToolbar);
 
         ussTree.setRootVisible(true);
 
@@ -2236,10 +2305,30 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 new MouseAdapter() {
 
                     @Override
+                    public void mousePressed(
+                            MouseEvent e) {
+
+                        maybeShowUssPopup(
+                                project,
+                                e);
+                    }
+
+                    @Override
+                    public void mouseReleased(
+                            MouseEvent e) {
+
+                        maybeShowUssPopup(
+                                project,
+                                e);
+                    }
+
+                    @Override
                     public void mouseClicked(
                             MouseEvent e) {
 
-                        if (e.getClickCount() == 2) {
+                        if (e.getClickCount() == 2
+                                && SwingUtilities
+                                .isLeftMouseButton(e)) {
 
                             openUssSelection(
                                     project);
@@ -2261,7 +2350,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                         ussDetails));
 
         panel.add(
-                toolbar,
+                north,
                 BorderLayout.NORTH);
 
         panel.add(
@@ -2281,43 +2370,96 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         ussPath.setText(path);
 
+        String filterText =
+                ussFilter.getText().trim();
+
         setState(
                 "Listing USS "
                         + path
-                        + "...");
+                        + (filterText.isEmpty() ? "..." : " with filter '" + filterText + "'..."));
 
         runBackground(project, () -> {
 
             List<UnixFile> items =
                     new UssService(
                             ZoweConnectionProvider.current())
-                            .list(path);
+                            .list(path, filterText);
 
             SwingUtilities.invokeLater(() -> {
 
-                ussRoot.removeAllChildren();
+                currentUssItems = items;
+                currentUssPath = path;
 
-                for (UnixFile item : items) {
-
-                    ussRoot.add(
-                            new DefaultMutableTreeNode(
-                                    new UssNode(
-                                            path,
-                                            item)));
-                }
-
-                ussModel.reload();
-
-                ussTree.expandRow(0);
-
-                setState(
-                        "Loaded "
-                                + items.size()
-                                + " USS entries from "
-                                + path
-                                + ".");
+                applyUssFilter();
             });
         });
+    }
+
+    private void applyUssFilter() {
+        String filter = ussFilter.getText().trim();
+        ussRoot.removeAllChildren();
+        int matchedCount = 0;
+        for (UnixFile item : currentUssItems) {
+            if (matchesFilter(item, filter)) {
+                ussRoot.add(
+                        new DefaultMutableTreeNode(
+                                new UssNode(
+                                        currentUssPath,
+                                        item)));
+                matchedCount++;
+            }
+        }
+        ussModel.reload();
+        if (matchedCount > 0) {
+            ussTree.expandRow(0);
+        }
+        if (filter.isEmpty()) {
+            setState(
+                    "Loaded "
+                            + currentUssItems.size()
+                            + " USS entries from "
+                            + currentUssPath
+                            + ".");
+        } else {
+            setState(
+                    "Showing "
+                            + matchedCount
+                            + " of "
+                            + currentUssItems.size()
+                            + " entries matching filter '"
+                            + filter
+                            + "'.");
+        }
+    }
+
+    private static boolean matchesFilter(
+            UnixFile file,
+            String filter) {
+
+        if (filter == null || filter.isBlank()) {
+            return true;
+        }
+        if (file == null || file.getName() == null) {
+            return false;
+        }
+
+        String fileName = file.getName();
+        String pattern = filter.trim();
+
+        if (pattern.contains("*") || pattern.contains("?")) {
+            try {
+                String regex = "^"
+                        + pattern.toLowerCase(Locale.ROOT)
+                        .replace(".", "\\.")
+                        .replace("*", ".*")
+                        .replace("?", ".")
+                        + "$";
+                return fileName.toLowerCase(Locale.ROOT).matches(regex);
+            } catch (Exception ignored) {
+            }
+        }
+
+        return fileName.toLowerCase(Locale.ROOT).contains(pattern.toLowerCase(Locale.ROOT));
     }
 
     private void openUssSelection(
@@ -2372,6 +2514,275 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                                 + " in an IntelliJ editor tab. "
                                 + "Ctrl+S / Save All writes changes to z/OS.");
             });
+        });
+    }
+
+    private void maybeShowUssPopup(
+            Project project,
+            MouseEvent event) {
+
+        if (!event.isPopupTrigger()) {
+            return;
+        }
+
+        TreePath path =
+                ussTree.getPathForLocation(
+                        event.getX(),
+                        event.getY());
+
+        if (path == null) {
+            return;
+        }
+
+        ussTree.setSelectionPath(path);
+
+        DefaultMutableTreeNode node =
+                (DefaultMutableTreeNode)
+                        path.getLastPathComponent();
+
+        Object value =
+                node.getUserObject();
+
+        JPopupMenu menu = new JPopupMenu();
+
+        if (value instanceof UssNode item) {
+            JMenuItem open = new JMenuItem("Open", AllIcons.Actions.MenuOpen);
+            JMenuItem createFile = new JMenuItem("Create File...", AllIcons.General.Add);
+            JMenuItem createDir = new JMenuItem("Create Directory...", AllIcons.Actions.NewFolder);
+            JMenuItem rename = new JMenuItem("Rename...", AllIcons.Actions.Edit);
+            JMenuItem delete = new JMenuItem("Delete...", AllIcons.Actions.GC);
+
+            open.addActionListener(e -> openUssSelection(project));
+            createFile.addActionListener(e -> createUssFileFromSelection(project, item));
+            createDir.addActionListener(e -> createUssDirFromSelection(project, item));
+            rename.addActionListener(e -> renameUssSelection(project, item));
+            delete.addActionListener(e -> deleteUssSelection(project, item));
+
+            menu.add(open);
+            menu.add(createFile);
+            menu.add(createDir);
+            menu.addSeparator();
+            menu.add(rename);
+            menu.add(delete);
+        } else {
+            JMenuItem createFile = new JMenuItem("Create File...", AllIcons.General.Add);
+            JMenuItem createDir = new JMenuItem("Create Directory...", AllIcons.Actions.NewFolder);
+
+            createFile.addActionListener(e -> createUssFileInDir(project, ussPath.getText()));
+            createDir.addActionListener(e -> createUssDirInDir(project, ussPath.getText()));
+
+            menu.add(createFile);
+            menu.add(createDir);
+        }
+
+        menu.show(
+                event.getComponent(),
+                event.getX(),
+                event.getY());
+    }
+
+    private void createUssFileFromSelection(
+            Project project,
+            UssNode item) {
+
+        String targetDir = item.isDirectory()
+                ? item.fullPath()
+                : normalizePath(ussPath.getText());
+
+        createUssFileInDir(project, targetDir);
+    }
+
+    private void createUssDirFromSelection(
+            Project project,
+            UssNode item) {
+
+        String targetDir = item.isDirectory()
+                ? item.fullPath()
+                : normalizePath(ussPath.getText());
+
+        createUssDirInDir(project, targetDir);
+    }
+
+    private void createUssFileInDir(
+            Project project,
+            String targetDir) {
+
+        String dirPath = normalizePath(targetDir);
+
+        String fileName = Messages.showInputDialog(
+                project,
+                "Enter new file name to create in " + dirPath + ":",
+                "Create USS File",
+                Messages.getQuestionIcon());
+
+        if (fileName == null || fileName.trim().isEmpty()) {
+            return;
+        }
+
+        fileName = fileName.trim();
+
+        String newPath = "/".equals(dirPath)
+                ? "/" + fileName
+                : dirPath + "/" + fileName;
+
+        setState("Creating USS file " + newPath + "...");
+
+        runBackground(project, () -> {
+            try {
+                new UssService(
+                        ZoweConnectionProvider.current())
+                        .createFile(newPath);
+
+                SwingUtilities.invokeLater(() -> {
+                    setState("Created USS file " + newPath + ".");
+                    listUss(project, dirPath);
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    setState("Could not create USS file " + newPath + ": " + ex.getMessage());
+                    Messages.showErrorDialog(
+                            project,
+                            "Could not create USS file " + newPath + ".\n\n" + ex.getMessage(),
+                            "Create USS File Failed");
+                });
+            }
+        });
+    }
+
+    private void createUssDirInDir(
+            Project project,
+            String targetDir) {
+
+        String dirPath = normalizePath(targetDir);
+
+        String dirName = Messages.showInputDialog(
+                project,
+                "Enter new directory name to create in " + dirPath + ":",
+                "Create USS Directory",
+                Messages.getQuestionIcon());
+
+        if (dirName == null || dirName.trim().isEmpty()) {
+            return;
+        }
+
+        dirName = dirName.trim();
+
+        String newPath = "/".equals(dirPath)
+                ? "/" + dirName
+                : dirPath + "/" + dirName;
+
+        setState("Creating USS directory " + newPath + "...");
+
+        runBackground(project, () -> {
+            try {
+                new UssService(
+                        ZoweConnectionProvider.current())
+                        .createDirectory(newPath);
+
+                SwingUtilities.invokeLater(() -> {
+                    setState("Created USS directory " + newPath + ".");
+                    listUss(project, dirPath);
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    setState("Could not create USS directory " + newPath + ": " + ex.getMessage());
+                    Messages.showErrorDialog(
+                            project,
+                            "Could not create USS directory " + newPath + ".\n\n" + ex.getMessage(),
+                            "Create USS Directory Failed");
+                });
+            }
+        });
+    }
+
+    private void renameUssSelection(
+            Project project,
+            UssNode item) {
+
+        String oldPath = item.fullPath();
+        String oldName = item.file.getName();
+
+        String newName = Messages.showInputDialog(
+                project,
+                "Enter new name for " + oldName + ":",
+                "Rename USS Item",
+                Messages.getQuestionIcon(),
+                oldName,
+                null);
+
+        if (newName == null || newName.trim().isEmpty() || newName.trim().equals(oldName)) {
+            return;
+        }
+
+        newName = newName.trim();
+        String currentDirectory = normalizePath(ussPath.getText());
+        String newPath = "/".equals(currentDirectory)
+                ? "/" + newName
+                : currentDirectory + "/" + newName;
+
+        setState("Renaming " + oldPath + " to " + newPath + "...");
+
+        runBackground(project, () -> {
+            try {
+                new UssService(
+                        ZoweConnectionProvider.current())
+                        .rename(oldPath, newPath);
+
+                SwingUtilities.invokeLater(() -> {
+                    setState("Renamed " + oldPath + " to " + newPath + ".");
+                    listUss(project, currentDirectory);
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    setState("Could not rename " + oldPath + ": " + ex.getMessage());
+                    Messages.showErrorDialog(
+                            project,
+                            "Could not rename " + oldPath + " to " + newPath + ".\n\n" + ex.getMessage(),
+                            "Rename USS Item Failed");
+                });
+            }
+        });
+    }
+
+    private void deleteUssSelection(
+            Project project,
+            UssNode item) {
+
+        String targetPath = item.fullPath();
+        boolean isDir = item.isDirectory();
+        String itemType = isDir ? "directory" : "file";
+
+        int confirm = Messages.showYesNoDialog(
+                project,
+                "Are you sure you want to delete " + itemType + " '" + targetPath + "'?\n\nThis action cannot be undone.",
+                "Delete USS " + (isDir ? "Directory" : "File"),
+                Messages.getWarningIcon());
+
+        if (confirm != Messages.YES) {
+            return;
+        }
+
+        setState("Deleting USS " + itemType + " " + targetPath + "...");
+
+        runBackground(project, () -> {
+            try {
+                new UssService(
+                        ZoweConnectionProvider.current())
+                        .delete(targetPath, isDir);
+
+                SwingUtilities.invokeLater(() -> {
+                    setState("Deleted USS " + itemType + " " + targetPath + ".");
+                    listUss(project, ussPath.getText());
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    setState("Could not delete " + targetPath + ": " + ex.getMessage());
+                    Messages.showErrorDialog(
+                            project,
+                            "Could not delete USS " + itemType + " " + targetPath + ".\n\n" + ex.getMessage(),
+                            "Delete USS Item Failed");
+                });
+            }
         });
     }
 
@@ -2995,9 +3406,31 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
             Messages.showErrorDialog(
                     project,
-                    ex.toString(),
+                    formatErrorMessage(ex),
                     "Zowe Java Explorer");
         });
+    }
+
+    private static String formatErrorMessage(Throwable ex) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(ex.getMessage() != null ? ex.getMessage() : ex.toString());
+
+        if (ex instanceof ZosmfRequestException zex && zex.getResponse() != null) {
+            zex.getResponse().getResponsePhraseAsString().ifPresent(phrase -> {
+                if (!phrase.isBlank()) {
+                    sb.append("\n\nResponse details: ").append(phrase);
+                }
+            });
+        }
+
+        Throwable cause = ex.getCause();
+        while (cause != null && cause != ex) {
+            if (cause.getMessage() != null && !cause.getMessage().isBlank()) {
+                sb.append("\n\nCaused by: ").append(cause.getMessage());
+            }
+            cause = cause.getCause();
+        }
+        return sb.toString();
     }
 
     private void setState(
