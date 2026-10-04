@@ -1,7 +1,9 @@
 package org.zowe.explorerjava;
 
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.wm.ToolWindow;
@@ -23,6 +25,7 @@ import zowe.client.sdk.zosjobs.model.JobFile;
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import java.awt.*;
@@ -123,8 +126,8 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             new JTree(dsnModel);
     private final JBTextArea dsnDetails =
             textArea(false);
-    private final JBTextField dsnMask =
-            new JBTextField();
+    private final ComboBox<String> dsnMask =
+            new ComboBox<>();
 
     // USS
     private final DefaultMutableTreeNode ussRoot =
@@ -1295,10 +1298,58 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         JButton open =
                 new JButton("Open");
 
-        dsnMask.setColumns(26);
+        dsnMask.setEditable(true);
+        dsnMask.setPreferredSize(new Dimension(220, dsnMask.getPreferredSize().height));
 
         dsnMask.setToolTipText(
-                "Data set mask, for example USER.* or USER.JCL");
+                "Data set mask, for example USER.* or USER.JCL (Right-click to manage history)");
+
+        updateDsnMaskHistoryModel(null);
+
+        Component editorComponent = dsnMask.getEditor() != null ? dsnMask.getEditor().getEditorComponent() : null;
+        if (editorComponent instanceof JTextField textField) {
+            textField.addActionListener(e -> searchDataSets(project));
+        }
+
+        dsnMask.addActionListener(e -> {
+            if ("comboBoxEdited".equals(e.getActionCommand())) {
+                searchDataSets(project);
+            }
+        });
+
+        JButton deleteMask = new JButton(AllIcons.Actions.GC);
+        deleteMask.setToolTipText("Delete selected mask from history");
+        deleteMask.addActionListener(e -> deleteSelectedDsnMask(project));
+
+        JPopupMenu maskMenu = new JPopupMenu();
+        JMenuItem deleteItem = new JMenuItem("Delete Selected Mask from History", AllIcons.Actions.GC);
+        deleteItem.addActionListener(e -> deleteSelectedDsnMask(project));
+        JMenuItem clearAllItem = new JMenuItem("Clear All Mask History");
+        clearAllItem.addActionListener(e -> clearDsnMaskHistory(project));
+        maskMenu.add(deleteItem);
+        maskMenu.add(clearAllItem);
+
+        MouseAdapter popupListener = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            private void maybeShowPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    maskMenu.show(e.getComponent(), e.getX(), e.getY());
+                }
+            }
+        };
+        dsnMask.addMouseListener(popupListener);
+        if (editorComponent != null) {
+            editorComponent.addMouseListener(popupListener);
+        }
 
         search.addActionListener(
                 e -> searchDataSets(project));
@@ -1309,13 +1360,11 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         open.addActionListener(
                 e -> openDataSetSelection(project));
 
-        dsnMask.addActionListener(
-                e -> searchDataSets(project));
-
         left.add(
                 new JBLabel("Mask:"));
 
         left.add(dsnMask);
+        left.add(deleteMask);
         left.add(search);
         left.add(members);
         left.add(open);
@@ -1325,6 +1374,52 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 BorderLayout.WEST);
 
         dsnTree.setRootVisible(true);
+
+        dsnTree.setCellRenderer(
+                new DefaultTreeCellRenderer() {
+
+                    @Override
+                    public Component getTreeCellRendererComponent(
+                            JTree tree,
+                            Object value,
+                            boolean sel,
+                            boolean expanded,
+                            boolean leaf,
+                            int row,
+                            boolean hasFocus) {
+
+                        Component c =
+                                super.getTreeCellRendererComponent(
+                                        tree,
+                                        value,
+                                        sel,
+                                        expanded,
+                                        leaf,
+                                        row,
+                                        hasFocus);
+
+                        if (value instanceof DefaultMutableTreeNode node) {
+
+                            Object userObject =
+                                    node.getUserObject();
+
+                            if (userObject instanceof DatasetNode datasetNode) {
+
+                                if (isPds(datasetNode.dataset)) {
+                                    setIcon(AllIcons.Nodes.Folder);
+                                } else {
+                                    setIcon(AllIcons.FileTypes.Text);
+                                }
+
+                            } else if (userObject instanceof MemberNode) {
+
+                                setIcon(AllIcons.Nodes.C_public);
+                            }
+                        }
+
+                        return c;
+                    }
+                });
 
         dsnTree.addTreeSelectionListener(
                 e -> showSelectedDsnNode());
@@ -1368,8 +1463,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                                 && SwingUtilities
                                 .isLeftMouseButton(e)) {
 
-                            openDataSetSelection(
-                                    project);
+                            handleDsnTreeDoubleClick(project);
                         }
                     }
                 });
@@ -1483,10 +1577,60 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 member.qualifiedName());
     }
 
+    private String getDsnMaskText() {
+        Object item = dsnMask.getEditor() != null ? dsnMask.getEditor().getItem() : dsnMask.getSelectedItem();
+        return item != null ? item.toString().trim() : "";
+    }
+
+    private void updateDsnMaskHistoryModel(String currentMask) {
+        List<String> history = ZoweConnectionSettings.getInstance().getDsnMaskHistory();
+        DefaultComboBoxModel<String> model = new DefaultComboBoxModel<>();
+        for (String item : history) {
+            model.addElement(item);
+        }
+        dsnMask.setModel(model);
+        if (currentMask != null && !currentMask.isBlank()) {
+            dsnMask.setSelectedItem(currentMask);
+            if (dsnMask.getEditor() != null) {
+                dsnMask.getEditor().setItem(currentMask);
+            }
+        } else if (!history.isEmpty()) {
+            dsnMask.setSelectedItem(history.get(0));
+            if (dsnMask.getEditor() != null) {
+                dsnMask.getEditor().setItem(history.get(0));
+            }
+        }
+    }
+
+    private void deleteSelectedDsnMask(Project project) {
+        String mask = getDsnMaskText();
+        if (mask.isEmpty()) {
+            return;
+        }
+        ZoweConnectionSettings.getInstance().removeDsnMaskFromHistory(mask);
+        updateDsnMaskHistoryModel(null);
+        setState("Deleted mask '" + mask + "' from history.");
+    }
+
+    private void clearDsnMaskHistory(Project project) {
+        int choice = Messages.showYesNoDialog(
+                project,
+                "Are you sure you want to clear all dataset mask history?",
+                "Clear Mask History",
+                Messages.getQuestionIcon());
+        if (choice == Messages.YES) {
+            ZoweConnectionSettings.getInstance().clearDsnMaskHistory();
+            updateDsnMaskHistoryModel(null);
+            if (dsnMask.getEditor() != null) {
+                dsnMask.getEditor().setItem("");
+            }
+            setState("Cleared dataset mask history.");
+        }
+    }
+
     private void searchDataSets(Project project) {
 
-        String mask =
-                dsnMask.getText().trim();
+        String mask = getDsnMaskText();
 
         if (mask.isEmpty()) {
 
@@ -1497,6 +1641,9 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
             return;
         }
+
+        ZoweConnectionSettings.getInstance().addDsnMaskToHistory(mask);
+        updateDsnMaskHistoryModel(mask);
 
         setState(
                 "Searching data sets: "
@@ -1549,6 +1696,35 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             return;
         }
 
+        Dataset dataset = datasetNode.dataset;
+        if (isArchivedDataset(dataset)) {
+            showArchivedMessage(project, dataset.getDsname());
+            return;
+        }
+
+        if (!isPds(dataset)) {
+            String dsn = dataset.getDsname();
+            String reason = isSequential(dataset) ? "sequential" : "non-partitioned";
+            if (dataset.getDsorg() == null || dataset.getDsorg().isBlank()) {
+                reason = "of unknown type / unclassified DSORG";
+            }
+            setState("Data set " + dsn + " is " + reason + ". Nothing to display for members.");
+            dsnDetails.setText(formatDataset(dataset));
+            Messages.showInfoMessage(
+                    project,
+                    "Cannot load members for " + dsn + " because it is " + reason + ".",
+                    "Zowe Java Explorer");
+            return;
+        }
+
+        loadMembersForNode(project, node, datasetNode);
+    }
+
+    private void loadMembersForNode(
+            Project project,
+            DefaultMutableTreeNode node,
+            DatasetNode datasetNode) {
+
         String dsn =
                 datasetNode.dataset
                         .getDsname();
@@ -1560,37 +1736,50 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         runBackground(project, () -> {
 
-            List<Member> members =
-                    new DataSetService(
-                            ZoweConnectionProvider.current())
-                            .members(dsn);
+            try {
+                List<Member> members =
+                        new DataSetService(
+                                ZoweConnectionProvider.current())
+                                .members(dsn);
 
-            SwingUtilities.invokeLater(() -> {
+                SwingUtilities.invokeLater(() -> {
 
-                node.removeAllChildren();
+                    node.removeAllChildren();
 
-                for (Member member : members) {
+                    for (Member member : members) {
 
-                    node.add(
-                            new DefaultMutableTreeNode(
-                                    new MemberNode(
-                                            dsn,
-                                            member)));
-                }
+                        node.add(
+                                new DefaultMutableTreeNode(
+                                        new MemberNode(
+                                                dsn,
+                                                member)));
+                    }
 
-                dsnModel.reload(node);
+                    dsnModel.reload(node);
 
-                dsnTree.expandPath(
-                        new TreePath(
-                                node.getPath()));
+                    dsnTree.expandPath(
+                            new TreePath(
+                                    node.getPath()));
 
-                setState(
-                        "Loaded "
-                                + members.size()
-                                + " members from "
-                                + dsn
-                                + ".");
-            });
+                    setState(
+                            "Loaded "
+                                    + members.size()
+                                    + " members from "
+                                    + dsn
+                                    + ".");
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    if (isArchivedError(ex)) {
+                        showArchivedMessage(project, dsn);
+                    } else {
+                        setState("Could not load members for " + dsn + ": " + ex.getMessage());
+                        Messages.showErrorDialog(project,
+                                "Could not load members for " + dsn + ".\n\n" + ex.getMessage(),
+                                "Zowe Java Explorer");
+                    }
+                });
+            }
         });
     }
 
@@ -1607,25 +1796,36 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         Object value =
                 node.getUserObject();
 
-        String target;
+        if (value instanceof MemberNode member) {
 
-        if (value
-                instanceof MemberNode member) {
+            openDataSetTarget(project, member.qualifiedName());
 
-            target =
-                    member.qualifiedName();
+        } else if (value instanceof DatasetNode datasetNode) {
 
-        } else if (value
-                instanceof DatasetNode dataset) {
-
-            target =
-                    dataset.dataset
-                            .getDsname();
-
-        } else {
-
-            return;
+            Dataset dataset = datasetNode.dataset;
+            if (isArchivedDataset(dataset)) {
+                showArchivedMessage(project, dataset.getDsname());
+                return;
+            }
+            if (isPds(dataset)) {
+                Messages.showInfoMessage(
+                        project,
+                        "Data set " + dataset.getDsname() + " is a Partitioned Data Set (PDS). Select or double-click a member inside it to open.",
+                        "Zowe Java Explorer");
+            } else if (isSequential(dataset) || dataset.getDsorg() == null || dataset.getDsorg().isBlank()) {
+                openDataSetTarget(project, dataset.getDsname());
+            } else {
+                String dsorg = dataset.getDsorg();
+                setState("Nothing to display for non-sequential and non-partitioned data set " + dataset.getDsname() + ".");
+                Messages.showInfoMessage(
+                        project,
+                        "Nothing to display for non-sequential and non-partitioned data set " + dataset.getDsname() + " (DSORG: " + dsorg + ").",
+                        "Zowe Java Explorer");
+            }
         }
+    }
+
+    private void openDataSetTarget(Project project, String target) {
 
         setState(
                 "Opening "
@@ -1634,24 +1834,68 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         runBackground(project, () -> {
 
-            String content =
-                    new DataSetService(
-                            ZoweConnectionProvider.current())
-                            .read(target);
+            try {
+                String content =
+                        new DataSetService(
+                                ZoweConnectionProvider.current())
+                                .read(target);
 
-            SwingUtilities.invokeLater(() -> {
+                SwingUtilities.invokeLater(() -> {
 
-                remoteEditors.openDataSet(
-                        target,
-                        content);
+                    remoteEditors.openDataSet(
+                            target,
+                            content);
 
-                setState(
-                        "Opened "
-                                + target
-                                + " in an IntelliJ editor tab. "
-                                + "Ctrl+S / Save All writes changes to z/OS.");
-            });
+                    setState(
+                            "Opened "
+                                    + target
+                                    + " in an IntelliJ editor tab. "
+                                    + "Ctrl+S / Save All writes changes to z/OS.");
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    if (isArchivedError(ex)) {
+                        showArchivedMessage(project, target);
+                    } else {
+                        setState("Could not open " + target + ": " + ex.getMessage());
+                        Messages.showErrorDialog(project,
+                                "Could not open " + target + ".\n\n" + ex.getMessage(),
+                                "Zowe Java Explorer");
+                    }
+                });
+            }
         });
+    }
+
+    private void handleDsnTreeDoubleClick(Project project) {
+        DefaultMutableTreeNode node = selectedNode(dsnTree);
+        if (node == null) {
+            return;
+        }
+
+        Object value = node.getUserObject();
+
+        if (value instanceof DatasetNode datasetNode) {
+            Dataset dataset = datasetNode.dataset;
+            if (isArchivedDataset(dataset)) {
+                showArchivedMessage(project, dataset.getDsname());
+                return;
+            }
+            if (isPds(dataset)) {
+                loadMembersForNode(project, node, datasetNode);
+            } else if (isSequential(dataset) || dataset.getDsorg() == null || dataset.getDsorg().isBlank()) {
+                openDataSetTarget(project, dataset.getDsname());
+            } else {
+                String dsorg = dataset.getDsorg();
+                setState("Nothing to display for non-sequential and non-partitioned data set " + dataset.getDsname() + ".");
+                Messages.showInfoMessage(
+                        project,
+                        "Nothing to display for non-sequential and non-partitioned data set " + dataset.getDsname() + " (DSORG: " + dsorg + ").",
+                        "Zowe Java Explorer");
+            }
+        } else if (value instanceof MemberNode) {
+            openDataSetSelection(project);
+        }
     }
 
     private void showSelectedDsnNode() {
@@ -1666,18 +1910,17 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         Object value =
                 node.getUserObject();
 
-        if (value
-                instanceof DatasetNode dataset) {
+        if (value instanceof DatasetNode datasetNode) {
 
             dsnDetails.setText(
                     formatDataset(
-                            dataset.dataset));
+                            datasetNode.dataset));
 
-        } else if (value
-                instanceof MemberNode member) {
+        } else if (value instanceof MemberNode memberNode) {
 
             dsnDetails.setText(
-                    member.member.toString());
+                    formatMember(
+                            memberNode.member));
         }
 
         dsnDetails.setCaretPosition(0);
@@ -2567,33 +2810,170 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 + "\n";
     }
 
+    private static boolean isPds(Dataset dataset) {
+        if (dataset == null) {
+            return false;
+        }
+        String dsorg = dataset.getDsorg();
+        if (dsorg != null && !dsorg.isBlank()) {
+            String upper = dsorg.trim().toUpperCase(Locale.ROOT);
+            return upper.startsWith("PO") || upper.contains("PO");
+        }
+        return false;
+    }
+
+    private static boolean isSequential(Dataset dataset) {
+        if (dataset == null) {
+            return false;
+        }
+        String dsorg = dataset.getDsorg();
+        if (dsorg != null && !dsorg.isBlank()) {
+            String upper = dsorg.trim().toUpperCase(Locale.ROOT);
+            return upper.startsWith("PS") || upper.contains("PS");
+        }
+        return false;
+    }
+
+    private static boolean isArchivedDataset(Dataset dataset) {
+        if (dataset == null) {
+            return false;
+        }
+        String vol = dataset.getVol();
+        if (vol != null && !vol.isBlank()) {
+            String upper = vol.trim().toUpperCase(Locale.ROOT);
+            return upper.contains("ARCIVE") || upper.contains("MIGRAT");
+        }
+        return false;
+    }
+
+    private static boolean isArchivedError(Throwable ex) {
+        if (ex == null) {
+            return false;
+        }
+        String text = ex.getMessage();
+        if (text == null) {
+            text = ex.toString();
+        } else {
+            text = text + " " + ex.toString();
+        }
+        if (ex.getCause() != null) {
+            text += " " + ex.getCause().toString();
+        }
+        String upper = text.toUpperCase(Locale.ROOT);
+        return upper.contains("ARCIVE")
+                || upper.contains("ARCHIV")
+                || upper.contains("MIGRAT")
+                || upper.contains("CA DISK")
+                || upper.contains("AUTO RESTORE")
+                || upper.contains("TSO PROMPT")
+                || upper.contains("WAIT FOR THE RESTORE");
+    }
+
+    private void showArchivedMessage(Project project, String target) {
+        String message = "Data set " + target + " cannot be selected or opened because it is archived on z/OS.\n\n"
+                + "The data set is archived/migrated (e.g. via CA Disk or DFHSM to tape/secondary storage)\n"
+                + "and requires restoration before it can be accessed.";
+        setState("Data set " + target + " cannot be accessed because it is archived on z/OS.");
+        Messages.showWarningDialog(project, message, "Data Set Archived");
+    }
+
     private String formatDataset(
             Dataset d) {
 
-        return "Data Set : "
-                + d.getDsname()
-                + "\n"
-                + "DSORG    : "
-                + d.getDsorg()
-                + "\n"
-                + "RECFM    : "
-                + d.getRecfm()
-                + "\n"
-                + "LRECL    : "
-                + d.getLrectl()
-                + "\n"
-                + "BLKSIZE  : "
-                + d.getBlksz()
-                + "\n"
-                + "Volume   : "
-                + d.getVol()
-                + "\n"
-                + "Created  : "
-                + d.getCdate()
-                + "\n"
-                + "Used     : "
-                + d.getUsed()
-                + "\n";
+        StringBuilder sb = new StringBuilder();
+        sb.append("Data Set : ").append(d.getDsname() != null ? d.getDsname() : "").append("\n")
+                .append("DSORG    : ").append(d.getDsorg() != null ? d.getDsorg() : "").append("\n")
+                .append("RECFM    : ").append(d.getRecfm() != null ? d.getRecfm() : "").append("\n")
+                .append("LRECL    : ").append(d.getLrectl() != null ? d.getLrectl() : "").append("\n")
+                .append("BLKSIZE  : ").append(d.getBlksz() != null ? d.getBlksz() : "").append("\n")
+                .append("Volume   : ").append(d.getVol() != null ? d.getVol() : "").append("\n")
+                .append("Created  : ").append(d.getCdate() != null ? d.getCdate() : "").append("\n")
+                .append("Used     : ").append(d.getUsed() != null ? d.getUsed() : "").append("\n");
+
+        if (isPds(d)) {
+            sb.append("Type     : Partitioned Data Set (PDS/PDSE) - Double-click to list members\n");
+        } else if (isSequential(d)) {
+            sb.append("Type     : Sequential Data Set (PS) - Double-click to open file\n");
+        } else if (d.getDsorg() != null && !d.getDsorg().isBlank()) {
+            sb.append("Type     : Non-sequential and non-partitioned data set (").append(d.getDsorg()).append(")\n");
+        } else {
+            sb.append("Type     : \n");
+        }
+
+        if (isArchivedDataset(d)) {
+            sb.append("Status   : Archived / Migrated on z/OS\n");
+        }
+        return sb.toString();
+    }
+
+    private String formatMember(Member member) {
+        if (member == null) {
+            return "";
+        }
+        String str = member.toString();
+        if (str.startsWith("Member{") && str.endsWith("}")) {
+            str = str.substring(7, str.length() - 1);
+        } else if (str.contains("{") && str.endsWith("}")) {
+            str = str.substring(str.indexOf('{') + 1, str.length() - 1);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        java.util.List<String> pairs = parseKeyValuePairs(str);
+        for (String pair : pairs) {
+            int eq = pair.indexOf('=');
+            if (eq > 0) {
+                String key = pair.substring(0, eq).trim();
+                String val = pair.substring(eq + 1).trim();
+                if (val.startsWith("'") && val.endsWith("'") && val.length() >= 2) {
+                    val = val.substring(1, val.length() - 1);
+                }
+                String label = formatKeyLabel(key);
+                sb.append(String.format("%-10s: %s\n", label, val));
+            } else if (!pair.isBlank()) {
+                sb.append(pair).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String formatKeyLabel(String key) {
+        return switch (key.toLowerCase()) {
+            case "member" -> "Member";
+            case "vers" -> "Version";
+            case "mod" -> "Mod Level";
+            case "c4date" -> "Created";
+            case "m4date" -> "Modified";
+            case "cnorc" -> "Current";
+            case "inorc" -> "Initial";
+            case "mnorc" -> "Mod Lines";
+            case "mtime" -> "Mod Time";
+            case "msec" -> "Mod Sec";
+            case "user" -> "User ID";
+            case "sclm" -> "SCLM";
+            default -> key.isEmpty() ? key : Character.toUpperCase(key.charAt(0)) + key.substring(1);
+        };
+    }
+
+    private static java.util.List<String> parseKeyValuePairs(String input) {
+        java.util.List<String> list = new java.util.ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (c == '\'') {
+                inQuotes = !inQuotes;
+                current.append(c);
+            } else if (c == ',' && !inQuotes) {
+                list.add(current.toString().trim());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        if (current.length() > 0) {
+            list.add(current.toString().trim());
+        }
+        return list;
     }
 
     private static String normalizePath(
