@@ -3,6 +3,12 @@
 
 Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by [**Zowe Client Java SDK**](https://github.com/zowe/zowe-client-java-sdk).
 
+This is an alternative IntelliJ plugin for performing z/OS operations directly from the IDE, offering a different approach from the existing plugin provided by the Zowe community on the JetBrains Marketplace.
+
+This plugin is built on the **Zowe Client Java SDK**, while the existing Zowe community plugin is based on the **Zowe Client Kotlin SDK**.
+
+I’m approaching this project as both an alternative implementation and an experiment—exploring different design choices, features, and workflows while potentially expanding the plugin to provide broader z/OS API coverage through the Zowe Client Java SDK.  
+
 ---
 
 ## Main Demo
