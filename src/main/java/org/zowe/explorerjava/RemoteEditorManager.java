@@ -20,6 +20,7 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.LightVirtualFile;
 import org.jetbrains.annotations.NotNull;
+import zowe.client.sdk.zosjobs.model.JobFile;
 
 import java.util.Map;
 import java.util.Objects;
@@ -92,6 +93,9 @@ public final class RemoteEditorManager implements Disposable {
         for (Map.Entry<RemoteVirtualFile, RemoteResource> entry : resources.entrySet()) {
             RemoteVirtualFile remoteFile = entry.getKey();
             RemoteResource resource = entry.getValue();
+            if (resource.kind == RemoteKind.SPOOL) {
+                continue;
+            }
             Document document = FileDocumentManager.getInstance().getCachedDocument(remoteFile);
             if (document == null) {
                 document = FileDocumentManager.getInstance().getDocument(remoteFile);
@@ -137,6 +141,42 @@ public final class RemoteEditorManager implements Disposable {
         open(resource, content);
     }
 
+    public void openSpool(JobFile file, String content) {
+        String name = spoolFileName(file);
+        open(RemoteResource.spool(name, content), content);
+    }
+
+    public void openSpool(String name, String content) {
+        open(RemoteResource.spool(name, content), content);
+    }
+
+    public static String spoolFileName(JobFile file) {
+        if (file == null) {
+            return "spool.txt";
+        }
+        String jobName = file.getJobName() != null ? file.getJobName() : "";
+        String jobId = file.getJobId() != null ? file.getJobId() : "";
+        String ddName = file.getDdName() != null ? file.getDdName() : "SPOOL";
+
+        StringBuilder sb = new StringBuilder();
+        if (!jobName.isBlank()) {
+            sb.append(jobName);
+        }
+        if (!jobId.isBlank()) {
+            if (!sb.isEmpty()) sb.append("_");
+            sb.append(jobId);
+        }
+        if (!ddName.isBlank()) {
+            if (!sb.isEmpty()) sb.append("_");
+            sb.append(ddName);
+        }
+        if (sb.isEmpty()) {
+            sb.append("spool");
+        }
+        sb.append(".txt");
+        return sb.toString();
+    }
+
     private void open(RemoteResource resource, String content) {
         // Reuse an existing tab for the same remote target where possible.
         for (Map.Entry<RemoteVirtualFile, RemoteResource> entry : resources.entrySet()) {
@@ -158,6 +198,9 @@ public final class RemoteEditorManager implements Disposable {
     }
 
     private void safeSaveAsync(RemoteResource resource, Document document, String localContent) {
+        if (resource.kind == RemoteKind.SPOOL) {
+            return;
+        }
         if (!resource.saveInProgress.compareAndSet(false, true)) {
             return;
         }
@@ -233,14 +276,16 @@ public final class RemoteEditorManager implements Disposable {
     private String readRemote(RemoteResource resource) throws Exception {
         if (resource.kind == RemoteKind.DATA_SET) {
             return new DataSetService(ZoweConnectionProvider.current()).read(resource.target);
+        } else if (resource.kind == RemoteKind.USS) {
+            return new UssService(ZoweConnectionProvider.current()).readText(resource.target, resource.encoding);
         }
-        return new UssService(ZoweConnectionProvider.current()).readText(resource.target, resource.encoding);
+        return resource.baselineContent;
     }
 
     private void writeRemote(RemoteResource resource, String content) throws Exception {
         if (resource.kind == RemoteKind.DATA_SET) {
             new DataSetService(ZoweConnectionProvider.current()).write(resource.target, content);
-        } else {
+        } else if (resource.kind == RemoteKind.USS) {
             new UssService(ZoweConnectionProvider.current()).writeText(resource.target, content, resource.encoding);
         }
     }
@@ -261,11 +306,11 @@ public final class RemoteEditorManager implements Disposable {
         private RemoteVirtualFile(String name, String content, RemoteResource resource) {
             super(name, fileTypeFor(name, resource), content);
             this.resource = resource;
-            setWritable(true);
+            setWritable(resource.kind != RemoteKind.SPOOL);
         }
 
         private static FileType fileTypeFor(String name, RemoteResource resource) {
-            if (resource.kind == RemoteKind.USS) {
+            if (resource.kind == RemoteKind.USS || resource.kind == RemoteKind.SPOOL) {
                 FileType detected = FileTypeManager.getInstance().getFileTypeByFileName(name);
                 if (!detected.isBinary()) {
                     return detected;
@@ -285,7 +330,7 @@ public final class RemoteEditorManager implements Disposable {
         }
     }
 
-    private enum RemoteKind {DATA_SET, USS}
+    private enum RemoteKind {DATA_SET, USS, SPOOL}
 
     private static final class RemoteResource {
         private final RemoteKind kind;
@@ -308,6 +353,10 @@ public final class RemoteEditorManager implements Disposable {
             return new RemoteResource(RemoteKind.USS, target, baselineContent);
         }
 
+        static RemoteResource spool(String target, String baselineContent) {
+            return new RemoteResource(RemoteKind.SPOOL, target, baselineContent);
+        }
+
         boolean sameTarget(RemoteResource other) {
             return kind == other.kind && target.equals(other.target);
         }
@@ -321,7 +370,13 @@ public final class RemoteEditorManager implements Disposable {
         }
 
         String presentableUrl() {
-            return kind == RemoteKind.DATA_SET ? "zowe-dsn://" + target : "zowe-uss://" + target;
+            if (kind == RemoteKind.DATA_SET) {
+                return "zowe-dsn://" + target;
+            } else if (kind == RemoteKind.USS) {
+                return "zowe-uss://" + target;
+            } else {
+                return "zowe-spool://" + target;
+            }
         }
     }
 }

@@ -1,5 +1,5 @@
 
-# Zowe Explorer (Java SDK Edition)
+# z/OS Navigator for Zowe
 
 Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by [**Zowe Client Java SDK**](https://github.com/zowe/zowe-client-java-sdk).
 
@@ -63,6 +63,11 @@ I’m approaching this project as both an alternative implementation and an expe
 - **Real-Time Job Monitoring**: Track jobs until `OUTPUT` status using `JobMonitor.waitByOutputStatus`.
 - **Spool Output & Workflows**:
     - **Double-Click Workflows**: Double-clicking a job automatically fetches and expands its spool files; double-clicking a spool file opens its content directly in the details viewer.
+    - **Right-Click Context Menu & Main Editor Integration**:
+        - Right-click spool file -> **Open in Main Editor** (or toolbar button **Open in Editor**): Opens the spool output in a full IntelliJ editor tab as a read-only remote file (`zowe-spool://`).
+        - Right-click spool file -> **Download Spool As...**: Downloads the spool output to the local file system.
+        - Right-click spool file -> **View Spool Content**: Displays the spool output in the tool window details viewer.
+        - Right-click job node -> **Load Spool Files** / **Show JCL**: Fetches spool file listings or job JCL directly.
     - **Clean Spool Labels**: Spool tree nodes display their concise `DD Name` (e.g. `JESJCL`, `JESMSGLG`, `SYSPRINT`).
     - **Formatted Spool Metadata**: Single-clicking a spool file displays formatted key-value metadata line-by-line (DD Name, Job ID, Job Name, Step Name, Proc Step, RECFM, LRECL, Byte/Record Count, Class, Records URL).
     - **Save Spool As...**: Save spool files to the local disk as text files.
@@ -135,7 +140,7 @@ gradlew buildPlugin
 The compiled plugin package ZIP will be located in:
 
 ```text
-build/distributions/com.frankgiordano.zowe.explorer.java-1.0.1.zip
+build/distributions/com.frankgiordano.zos.navigator-1.0.2.zip
 ```
 
 To install locally in IntelliJ:
@@ -153,7 +158,7 @@ To install locally in IntelliJ:
    ```bash
    gradlew buildPlugin
    ```
-   Verify that the output package `build/distributions/com.frankgiordano.zowe.explorer.java-1.0.1.zip` exists.
+   Verify that the output package `build/distributions/com.frankgiordano.zos.navigator-1.0.2.zip` exists.
 
 2. **Verify Plugin Compatibility**:
    ```bash

@@ -30,8 +30,8 @@ dependencies {
 
 intellijPlatform {
     pluginConfiguration {
-        id = "com.frankgiordano.zowe.explorer.java"
-        name = "Zowe Explorer (Java SDK Edition)"
+        id = "com.frankgiordano.zos.navigator"
+        name = "z/OS Navigator for Zowe"
         version = project.version.toString()
         ideaVersion {
             sinceBuild = "251"
@@ -39,6 +39,7 @@ intellijPlatform {
         description = """
             <h3>Lightweight z/OS Explorer for IntelliJ IDEA powered by Zowe Client Java SDK</h3>
             <p>Connect seamlessly to IBM z/OS mainframes directly from IntelliJ IDEA to manage Data Sets, Unix System Services (USS) files, JES Jobs, TSO commands, and MVS consoles.</p>
+            <p>Note: This is an independent community contribution and is not officially affiliated with the Open Mainframe Project or IBM.</p>
 
             <h4>Key Features</h4>
             <ul>
@@ -51,6 +52,11 @@ intellijPlatform {
             </ul>
         """.trimIndent()
         changeNotes = """
+            <h4>v1.0.2</h4>
+            <ul>
+                <li> Initial release of the Java SDK Edition under the new name: z/OS Navigator for Zowe.</li>
+                <li><b>Spool Editor Integration & Context Menu</b>: Added right-click context menu options to Job and Spool tree nodes (<i>Open in Main Editor</i>, <i>Download Spool As...</i>, <i>View Spool Content</i>, <i>Load Spool Files</i>, <i>Show JCL</i>) and added an <i>Open in Editor</i> toolbar button to view spool output directly in native IntelliJ editor tabs.</li>
+            </ul>
             <h4>v1.0.1</h4>
             <ul>
                 <li><b>Change Tag (chtag)</b>: New USS right-click action to set file tags (ISO8859-1, UTF-8, IBM-1047, IBM-037, binary, remove, or custom code set) via <code>UssChangeTag</code>. Resolves ASCII files displaying as unreadable characters due to z/OSMF assuming untagged files are EBCDIC.</li>
