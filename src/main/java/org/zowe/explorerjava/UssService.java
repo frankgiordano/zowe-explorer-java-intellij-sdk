@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import zowe.client.sdk.core.ZosConnection;
 import zowe.client.sdk.rest.GetJsonZosmfRequest;
+import zowe.client.sdk.rest.GetTextZosmfRequest;
 import zowe.client.sdk.rest.Response;
 import zowe.client.sdk.rest.exception.ZosmfRequestException;
 import zowe.client.sdk.utility.EncodeUtils;
@@ -12,6 +13,8 @@ import zowe.client.sdk.utility.FileUtils;
 import zowe.client.sdk.zosfiles.ZosFilesConstants;
 import zowe.client.sdk.zosfiles.uss.input.UssCreateInputData;
 import zowe.client.sdk.zosfiles.uss.input.UssListInputData;
+import zowe.client.sdk.zosfiles.uss.input.UssWriteInputData;
+import zowe.client.sdk.zosfiles.uss.methods.UssChangeTag;
 import zowe.client.sdk.zosfiles.uss.methods.UssCreate;
 import zowe.client.sdk.zosfiles.uss.methods.UssDelete;
 import zowe.client.sdk.zosfiles.uss.methods.UssGet;
@@ -25,6 +28,7 @@ import zowe.client.sdk.zosfiles.uss.types.CreateType;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Explorer-facing USS facade backed entirely by Zowe Client Java SDK.
@@ -41,6 +45,7 @@ public final class UssService {
     private final UssCreate create;
     private final UssDelete delete;
     private final UssMove move;
+    private final UssChangeTag tag;
 
     public UssService(ZosConnection connection) {
         this.connection = connection;
@@ -50,6 +55,7 @@ public final class UssService {
         this.create = new UssCreate(connection);
         this.delete = new UssDelete(connection);
         this.move = new UssMove(connection);
+        this.tag = new UssChangeTag(connection);
     }
 
     public List<UnixFile> list(String path) throws ZosmfRequestException {
@@ -126,6 +132,47 @@ public final class UssService {
 
     public void writeText(String path, String content) throws ZosmfRequestException {
         write.writeText(path, content);
+    }
+
+    /**
+     * Reads the file as text using an explicit code set (for example ISO8859-1), independent of the file tag.
+     */
+    public String readText(String path, String encoding) throws ZosmfRequestException {
+        if (encoding == null || encoding.isBlank()) {
+            return readText(path);
+        }
+        String url = connection.getZosmfUrl() + ZosFilesConstants.RESOURCE + ZosFilesConstants.RES_USS_FILES
+                + EncodeUtils.encodeURIComponent(FileUtils.validatePath(path));
+        GetTextZosmfRequest request = new GetTextZosmfRequest(connection);
+        request.setHeaders(Map.of("X-IBM-Data-Type", "text;fileEncoding=" + encoding.trim()));
+        request.setUrl(url);
+        Object body = request.executeRequest().getResponsePhrase().orElse("");
+        return body == null ? "" : body.toString();
+    }
+
+    public void writeText(String path, String content, String encoding) throws ZosmfRequestException {
+        if (encoding == null || encoding.isBlank()) {
+            writeText(path, content);
+            return;
+        }
+        write.writeCommon(path, new UssWriteInputData.Builder()
+                .textContent(content).fileEncoding(encoding.trim()).build());
+    }
+
+    /**
+     * Sets the file tag (chtag). A text tag with a code set such as ISO8859-1 tells z/OSMF how to
+     * convert the file to/from UTF-8 when it is read or written.
+     */
+    public void setTextTag(String path, String codeSet) throws ZosmfRequestException {
+        tag.text(path, codeSet);
+    }
+
+    public void setBinaryTag(String path) throws ZosmfRequestException {
+        tag.binary(path);
+    }
+
+    public void removeTag(String path) throws ZosmfRequestException {
+        tag.remove(path);
     }
 
     public void createFile(String path) throws ZosmfRequestException {

@@ -127,13 +127,25 @@ public final class RemoteEditorManager implements Disposable {
     }
 
     public void openUss(String path, String content) {
-        open(RemoteResource.uss(path, content), content);
+        openUss(path, content, null);
+    }
+
+    /** Opens a USS file whose reads and writes use an explicit code set (null = z/OSMF default). */
+    public void openUss(String path, String content, String encoding) {
+        RemoteResource resource = RemoteResource.uss(path, content);
+        resource.encoding = encoding;
+        open(resource, content);
     }
 
     private void open(RemoteResource resource, String content) {
         // Reuse an existing tab for the same remote target where possible.
         for (Map.Entry<RemoteVirtualFile, RemoteResource> entry : resources.entrySet()) {
             if (entry.getValue().sameTarget(resource)) {
+                if (!Objects.equals(entry.getValue().encoding, resource.encoding)) {
+                    // Different encoding requested: replace the stale tab instead of reusing it.
+                    FileEditorManager.getInstance(project).closeFile(entry.getKey());
+                    break;
+                }
                 FileEditorManager.getInstance(project).openFile(entry.getKey(), true, true);
                 return;
             }
@@ -222,14 +234,14 @@ public final class RemoteEditorManager implements Disposable {
         if (resource.kind == RemoteKind.DATA_SET) {
             return new DataSetService(ZoweConnectionProvider.current()).read(resource.target);
         }
-        return new UssService(ZoweConnectionProvider.current()).readText(resource.target);
+        return new UssService(ZoweConnectionProvider.current()).readText(resource.target, resource.encoding);
     }
 
     private void writeRemote(RemoteResource resource, String content) throws Exception {
         if (resource.kind == RemoteKind.DATA_SET) {
             new DataSetService(ZoweConnectionProvider.current()).write(resource.target, content);
         } else {
-            new UssService(ZoweConnectionProvider.current()).writeText(resource.target, content);
+            new UssService(ZoweConnectionProvider.current()).writeText(resource.target, content, resource.encoding);
         }
     }
 
@@ -280,6 +292,7 @@ public final class RemoteEditorManager implements Disposable {
         private final String target;
         private final AtomicBoolean saveInProgress = new AtomicBoolean(false);
         private volatile String baselineContent;
+        private volatile String encoding;
 
         private RemoteResource(RemoteKind kind, String target, String baselineContent) {
             this.kind = kind;

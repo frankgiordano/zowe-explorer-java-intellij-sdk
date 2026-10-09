@@ -28,6 +28,7 @@ public final class ZoweConnectionSettings implements PersistentStateComponent<Zo
         public String tsoAccount = "";
 
         public List<String> dsnMaskHistory = new ArrayList<>();
+        public List<String> ussPathHistory = new ArrayList<>();
 
         // Multi-connection fields
         public List<ConnectionProfile> profiles = new ArrayList<>();
@@ -223,6 +224,43 @@ public final class ZoweConnectionSettings implements PersistentStateComponent<Zo
     public void clearDsnMaskHistory() {
         if (state.dsnMaskHistory != null) {
             state.dsnMaskHistory.clear();
+        }
+    }
+
+    public List<String> getUssPathHistory() {
+        if (state.ussPathHistory == null) {
+            state.ussPathHistory = new ArrayList<>();
+        }
+        return new ArrayList<>(state.ussPathHistory);
+    }
+
+    public void addUssPathToHistory(String path) {
+        if (path == null || path.isBlank()) {
+            return;
+        }
+        String trimmed = path.trim();
+        if (state.ussPathHistory == null) {
+            state.ussPathHistory = new ArrayList<>();
+        }
+        state.ussPathHistory.remove(trimmed);
+        state.ussPathHistory.add(0, trimmed);
+        while (state.ussPathHistory.size() > 20) {
+            state.ussPathHistory.remove(state.ussPathHistory.size() - 1);
+        }
+    }
+
+    public void removeUssPathFromHistory(String path) {
+        if (path == null || path.isBlank()) {
+            return;
+        }
+        if (state.ussPathHistory != null) {
+            state.ussPathHistory.remove(path.trim());
+        }
+    }
+
+    public void clearUssPathHistory() {
+        if (state.ussPathHistory != null) {
+            state.ussPathHistory.clear();
         }
     }
 }
