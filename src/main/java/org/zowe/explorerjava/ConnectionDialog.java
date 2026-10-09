@@ -94,7 +94,7 @@ public final class ConnectionDialog extends DialogWrapper {
 
         leftPanel.add(new JBScrollPane(profileList), BorderLayout.CENTER);
 
-        JPanel listToolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        JPanel listToolbar = new JPanel(new WrapLayout(FlowLayout.LEFT, 4, 2));
         JButton addButton = new JButton(AllIcons.General.Add);
         addButton.setToolTipText("Add new connection profile");
         addButton.addActionListener(e -> addNewProfile());
@@ -151,7 +151,7 @@ public final class ConnectionDialog extends DialogWrapper {
 
         rightPanel.add(formPanel, BorderLayout.CENTER);
 
-        JPanel testToolbar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 4));
+        JPanel testToolbar = new JPanel(new WrapLayout(FlowLayout.RIGHT, 4, 4));
         testButton.addActionListener(e -> testCurrentConnection());
         testToolbar.add(testButton);
         rightPanel.add(testToolbar, BorderLayout.SOUTH);

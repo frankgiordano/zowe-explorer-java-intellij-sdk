@@ -266,7 +266,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         JPanel toolbar =
                 new JPanel(
-                        new FlowLayout(
+                        new WrapLayout(
                                 FlowLayout.LEFT,
                                 4,
                                 2));
@@ -400,14 +400,14 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         JPanel filterToolbar =
                 new JPanel(
-                        new FlowLayout(
+                        new WrapLayout(
                                 FlowLayout.LEFT,
                                 4,
                                 2));
 
         JPanel actionToolbar =
                 new JPanel(
-                        new FlowLayout(
+                        new WrapLayout(
                                 FlowLayout.LEFT,
                                 4,
                                 2));
@@ -502,6 +502,38 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         north.add(actionToolbar);
 
         jobsTree.setRootVisible(true);
+        ToolTipManager.sharedInstance().registerComponent(jobsTree);
+        jobsTree.setCellRenderer(
+                new DefaultTreeCellRenderer() {
+                    @Override
+                    public Component getTreeCellRendererComponent(
+                            JTree tree,
+                            Object value,
+                            boolean sel,
+                            boolean expanded,
+                            boolean leaf,
+                            int row,
+                            boolean hasFocus) {
+
+                        Component c = super.getTreeCellRendererComponent(
+                                tree, value, sel, expanded, leaf, row, hasFocus);
+
+                        if (value instanceof DefaultMutableTreeNode node) {
+                            Object userObject = node.getUserObject();
+                            if (userObject instanceof JobNode) {
+                                setIcon(AllIcons.Nodes.Folder);
+                            } else if (userObject instanceof SpoolNode) {
+                                setIcon(AllIcons.FileTypes.Text);
+                            }
+                        }
+
+                        if (c instanceof JComponent jc) {
+                            jc.setToolTipText(getText());
+                        }
+
+                        return c;
+                    }
+                });
 
         jobsTree.addTreeSelectionListener(
                 e -> showSelectedJobNode());
@@ -1356,13 +1388,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         JPanel toolbar =
                 new JPanel(
-                        new BorderLayout(
-                                4,
-                                2));
-
-        JPanel left =
-                new JPanel(
-                        new FlowLayout(
+                        new WrapLayout(
                                 FlowLayout.LEFT,
                                 4,
                                 2));
@@ -1378,6 +1404,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         dsnMask.setEditable(true);
         dsnMask.setPreferredSize(new Dimension(220, dsnMask.getPreferredSize().height));
+        dsnMask.setMinimumSize(new Dimension(80, dsnMask.getPreferredSize().height));
 
         dsnMask.setToolTipText(
                 "Data set mask, for example USER.* or USER.JCL (Right-click to manage history)");
@@ -1438,20 +1465,17 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         open.addActionListener(
                 e -> openDataSetSelection(project));
 
-        left.add(
+        toolbar.add(
                 new JBLabel("Mask:"));
 
-        left.add(dsnMask);
-        left.add(deleteMask);
-        left.add(search);
-        left.add(members);
-        left.add(open);
-
-        toolbar.add(
-                left,
-                BorderLayout.WEST);
+        toolbar.add(dsnMask);
+        toolbar.add(deleteMask);
+        toolbar.add(search);
+        toolbar.add(members);
+        toolbar.add(open);
 
         dsnTree.setRootVisible(true);
+        ToolTipManager.sharedInstance().registerComponent(dsnTree);
 
         dsnTree.setCellRenderer(
                 new DefaultTreeCellRenderer() {
@@ -1493,6 +1517,10 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
                                 setIcon(AllIcons.Nodes.C_public);
                             }
+                        }
+
+                        if (c instanceof JComponent jc) {
+                            jc.setToolTipText(getText());
                         }
 
                         return c;
@@ -2194,14 +2222,14 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         JPanel pathToolbar =
                 new JPanel(
-                        new FlowLayout(
+                        new WrapLayout(
                                 FlowLayout.LEFT,
                                 4,
                                 2));
 
         JPanel filterToolbar =
                 new JPanel(
-                        new FlowLayout(
+                        new WrapLayout(
                                 FlowLayout.LEFT,
                                 4,
                                 2));
@@ -2219,6 +2247,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 new JButton("Clear");
 
         ussPath.setPreferredSize(new Dimension(260, ussPath.getPreferredSize().height));
+        ussPath.setMinimumSize(new Dimension(80, ussPath.getPreferredSize().height));
         ussFilter.setColumns(20);
 
         ussPath.setToolTipText(
@@ -2336,6 +2365,40 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         north.add(filterToolbar);
 
         ussTree.setRootVisible(true);
+        ToolTipManager.sharedInstance().registerComponent(ussTree);
+        ussTree.setCellRenderer(
+                new DefaultTreeCellRenderer() {
+                    @Override
+                    public Component getTreeCellRendererComponent(
+                            JTree tree,
+                            Object value,
+                            boolean sel,
+                            boolean expanded,
+                            boolean leaf,
+                            int row,
+                            boolean hasFocus) {
+
+                        Component c = super.getTreeCellRendererComponent(
+                                tree, value, sel, expanded, leaf, row, hasFocus);
+
+                        if (value instanceof DefaultMutableTreeNode node) {
+                            Object userObject = node.getUserObject();
+                            if (userObject instanceof UssNode ussNode) {
+                                if (ussNode.isDirectory()) {
+                                    setIcon(AllIcons.Nodes.Folder);
+                                } else {
+                                    setIcon(AllIcons.FileTypes.Text);
+                                }
+                            }
+                        }
+
+                        if (c instanceof JComponent jc) {
+                            jc.setToolTipText(getText());
+                        }
+
+                        return c;
+                    }
+                });
 
         ussTree.addTreeSelectionListener(
                 e -> showSelectedUssNode());
@@ -3040,7 +3103,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         JPanel top =
                 new JPanel(
-                        new FlowLayout(
+                        new WrapLayout(
                                 FlowLayout.LEFT,
                                 4,
                                 2));
@@ -3125,7 +3188,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         JPanel top =
                 new JPanel(
-                        new FlowLayout(
+                        new WrapLayout(
                                 FlowLayout.LEFT,
                                 4,
                                 2));
@@ -3196,7 +3259,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         JPanel top =
                 new JPanel(
-                        new FlowLayout(
+                        new WrapLayout(
                                 FlowLayout.LEFT,
                                 4,
                                 2));
@@ -3649,7 +3712,8 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         area.setEditable(editable);
 
-        area.setLineWrap(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
 
         area.setFont(
                 new Font(

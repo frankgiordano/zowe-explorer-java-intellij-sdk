@@ -7,16 +7,16 @@ This is an alternative IntelliJ plugin for performing z/OS operations directly f
 
 This plugin is built on the **Zowe Client Java SDK**, while the existing Zowe community plugin is based on the **Zowe Client Kotlin SDK**.
 
-I’m approaching this project as both an alternative implementation and an experiment—exploring different design choices, features, and workflows while potentially expanding the plugin to provide broader z/OS API coverage through the Zowe Client Java SDK.  
+I’m approaching this project as both an alternative implementation and an experiment—exploring different design choices, features, and workflows while potentially expanding the plugin to provide broader z/OS API coverage through the Zowe Client Java SDK.
 
 ---
 
 ## Main Demo
 
-![zowe-explorer-for-intellij.gif](demos/zowe-explorer-for-intellij.gif)  
+![zowe-explorer-for-intellij.gif](demos/zowe-explorer-for-intellij.gif)
 
 ---  
-  
+
 ## Features & Capabilities
 
 ### 🔌 Multi-Connection Profile Management
@@ -42,12 +42,14 @@ I’m approaching this project as both an alternative implementation and an expe
 - **Archived Dataset Handling**: Gracefully handles CA Disk / DFHSM / TSO recall errors (`isArchivedError` / `isArchivedDataset`) with a **"Data Set Archived"** warning dialog and missing DSORG fallback.
 
 ### 📂 Unix System Services (USS)
-- **Directory Browsing & Smart Sorting**: Navigate directories and inspect file structures with `UssList`. Subdirectories are automatically grouped at the top followed by files, sorted alphabetically (case-insensitive).
+- **Directory Browsing, Path History & Smart Sorting**: Navigate directories and inspect file structures with `UssList`. Path field features an editable dropdown saving up to 20 recent directory paths persistently across restarts, with context menu options to delete individual entries or clear history. Subdirectories are automatically grouped at the top followed by files, sorted alphabetically (case-insensitive).
 - **File Search & Real-Time Filtering**:
     - **Live Client-Side Filtering**: `Filter:` text field and `Clear` button for instant, real-time tree filtering as you type. Supports wildcards (`*.sh`, `log*`, `config?.txt`) and case-insensitive substring matching.
     - **Server-Side Search**: Passes `name` search parameters (`?name=pattern`) directly to z/OSMF via `UssListInputData` for fast server-side wildcard filtering on large mainframe directories.
-- **Context Menu CRUD Operations**:
+- **Context Menu CRUD Operations & Tagging**:
     - **Open**: Right-click item -> `Open` (or double-click) to open text files in editor tabs or navigate directories.
+    - **Open With Encoding...**: Right-click file -> `Open With Encoding...` to open remote files under an explicit encoding (e.g. `ISO8859-1`, `UTF-8`, `IBM-1047`) without altering file tags on z/OS or requiring write permissions.
+    - **Change Tag (chtag)...**: Right-click file -> `Change Tag...` to set file tags (`ISO8859-1`, `UTF-8`, `IBM-1047`, `IBM-037`, `binary`, remove, or custom code set) via `UssChangeTag`. Fixes ASCII files displaying as unreadable characters when z/OSMF defaults untagged files to EBCDIC.
     - **Create File...**: Right-click -> `Create File...` to create new empty files (`rw-r--r--`) via `UssCreate`. Target directory resolves dynamically (inside the folder if a directory is right-clicked, or in the current directory if a file is right-clicked).
     - **Create Directory...**: Right-click -> `Create Directory...` to create new directories (`rwxr-xr-x`) via `UssCreate`.
     - **Rename...**: Right-click -> `Rename...` to rename files or directories in place via `UssMove`.
@@ -69,6 +71,11 @@ I’m approaching this project as both an alternative implementation and an expe
 - **Stateful TSO Terminal**: Issue stateful TSO commands (`TsoStart`, `TsoCmd.issueCommandByTsoSessionId`, `TsoStop`) reusing a single TSO address space across commands.
 - **MVS Console**: Execute MVS console commands using `ConsoleCmd`.
 - **USS SSH Terminal**: Execute remote SSH commands on z/OS Unix System Services using `UssCmd` with host-key verification (`~/.ssh/known_hosts`).
+
+### 🎨 Responsive UI & Layout Customization
+- **Wrapping Toolbars**: Custom `WrapLayout` implementation across all toolbars (**Jobs**, **Data Sets**, **USS**, **Commands**, and **Connection Manager**), allowing action buttons and filter inputs to wrap onto new lines automatically when narrowing tool window splitters or panes.
+- **Line-Wrapped Detail Views**: Detail view text areas feature word-wrapping (`setLineWrap(true)`, `setWrapStyleWord(true)`), preventing long job details, spool outputs, dataset metadata, and command outputs from clipping or disappearing.
+- **Tree Node Tooltips**: Integrated tooltips on tree controls (`jobsTree`, `dsnTree`, `ussTree`) to display full item names when hovering over truncated nodes.
 
 ### 💾 Remote Editor Integration & Concurrency Protection
 - **Global Save Interception**: Listens to IntelliJ save actions (`Ctrl+S`, `Save All`, File menu save) and application bus events (`FileDocumentManagerListener`) to write back modified remote editor tabs (`LightVirtualFile`).
@@ -128,7 +135,7 @@ gradlew buildPlugin
 The compiled plugin package ZIP will be located in:
 
 ```text
-build/distributions/com.frankgiordano.zowe.explorer.java-1.0.0.zip
+build/distributions/com.frankgiordano.zowe.explorer.java-1.0.1.zip
 ```
 
 To install locally in IntelliJ:
@@ -146,7 +153,7 @@ To install locally in IntelliJ:
    ```bash
    gradlew buildPlugin
    ```
-   Verify that the output package `build/distributions/com.frankgiordano.zowe.explorer.java-1.0.0.zip` exists.
+   Verify that the output package `build/distributions/com.frankgiordano.zowe.explorer.java-1.0.1.zip` exists.
 
 2. **Verify Plugin Compatibility**:
    ```bash
