@@ -146,8 +146,8 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             new JTree(ussModel);
     private final JBTextArea ussDetails =
             textArea(false);
-    private final JBTextField ussPath =
-            new JBTextField("/");
+    private final PathComboBox ussPath =
+            new PathComboBox("/");
     private final JBTextField ussFilter =
             new JBTextField();
     private List<UnixFile> currentUssItems =
@@ -2218,10 +2218,46 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         JButton clearFilter =
                 new JButton("Clear");
 
-        ussPath.setColumns(28);
+        ussPath.setPreferredSize(new Dimension(260, ussPath.getPreferredSize().height));
         ussFilter.setColumns(20);
 
-        ussPath.setToolTipText("USS Directory Path, for example /u/users/fg892105 or /usr/lpp");
+        ussPath.setToolTipText(
+                "USS Directory Path, for example /u/users/fg892105 or /usr/lpp (Right-click to manage history)");
+        ussPath.setHistory(ZoweConnectionSettings.getInstance().getUssPathHistory());
+
+        JButton deletePath = new JButton(AllIcons.Actions.GC);
+        deletePath.setToolTipText("Delete selected path from history");
+        deletePath.addActionListener(e -> deleteSelectedUssPath(project));
+
+        JPopupMenu pathMenu = new JPopupMenu();
+        JMenuItem deletePathItem = new JMenuItem("Delete Selected Path from History", AllIcons.Actions.GC);
+        deletePathItem.addActionListener(e -> deleteSelectedUssPath(project));
+        JMenuItem clearPathsItem = new JMenuItem("Clear All Path History");
+        clearPathsItem.addActionListener(e -> clearUssPathHistory(project));
+        pathMenu.add(deletePathItem);
+        pathMenu.add(clearPathsItem);
+
+        MouseAdapter pathPopupListener = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            private void maybeShowPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    pathMenu.show(e.getComponent(), e.getX(), e.getY());
+                }
+            }
+        };
+        ussPath.addMouseListener(pathPopupListener);
+        if (ussPath.getEditor() != null) {
+            ussPath.getEditor().getEditorComponent().addMouseListener(pathPopupListener);
+        }
         ussFilter.setToolTipText("Filter files/directories by name or pattern, for example *.sh, log, or config*");
 
         list.addActionListener(
@@ -2245,10 +2281,12 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                     parent);
         });
 
-        ussPath.addActionListener(
-                e -> listUss(
-                        project,
-                        ussPath.getText()));
+        // Fires on Enter in the editor or when a history entry is picked; ignored for programmatic updates.
+        ussPath.addActionListener(e -> {
+            if (!ussPath.isAdjusting()) {
+                listUss(project, ussPath.getText());
+            }
+        });
 
         ussFilter.addActionListener(
                 e -> listUss(
@@ -2284,6 +2322,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         pathToolbar.add(
                 new JBLabel("Path:"));
         pathToolbar.add(ussPath);
+        pathToolbar.add(deletePath);
         pathToolbar.add(list);
         pathToolbar.add(up);
         pathToolbar.add(open);
@@ -2360,6 +2399,72 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         return panel;
     }
 
+    private void deleteSelectedUssPath(Project project) {
+        String path = ussPath.getText();
+        if (path.isEmpty()) {
+            return;
+        }
+        ZoweConnectionSettings.getInstance().removeUssPathFromHistory(path);
+        ussPath.setHistory(ZoweConnectionSettings.getInstance().getUssPathHistory());
+        setState("Deleted path '" + path + "' from history.");
+    }
+
+    private void clearUssPathHistory(Project project) {
+        int choice = Messages.showYesNoDialog(
+                project,
+                "Are you sure you want to clear all USS path history?",
+                "Clear Path History",
+                Messages.getQuestionIcon());
+        if (choice == Messages.YES) {
+            ZoweConnectionSettings.getInstance().clearUssPathHistory();
+            ussPath.setHistory(List.of());
+            setState("Cleared USS path history.");
+        }
+    }
+
+    /** Editable combo box holding saved USS paths; programmatic updates do not fire action events. */
+    private static final class PathComboBox extends ComboBox<String> {
+        private boolean adjusting;
+
+        private PathComboBox(String initial) {
+            setEditable(true);
+            setText(initial);
+        }
+
+        private boolean isAdjusting() {
+            return adjusting;
+        }
+
+        private String getText() {
+            Object item = getEditor() != null ? getEditor().getItem() : getSelectedItem();
+            return item != null ? item.toString().trim() : "";
+        }
+
+        private void setText(String text) {
+            adjusting = true;
+            try {
+                setSelectedItem(text);
+                if (getEditor() != null) {
+                    getEditor().setItem(text);
+                }
+            } finally {
+                adjusting = false;
+            }
+        }
+
+        /** Replaces the dropdown entries while keeping the text currently shown (or the newest entry if blank). */
+        private void setHistory(List<String> history) {
+            String current = getText();
+            adjusting = true;
+            try {
+                setModel(new DefaultComboBoxModel<>(history.toArray(new String[0])));
+            } finally {
+                adjusting = false;
+            }
+            setText(current.isEmpty() && !history.isEmpty() ? history.get(0) : current);
+        }
+    }
+
     private void listUss(
             Project project,
             String requestedPath) {
@@ -2389,6 +2494,9 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
                 currentUssItems = items;
                 currentUssPath = path;
+
+                ZoweConnectionSettings.getInstance().addUssPathToHistory(path);
+                ussPath.setHistory(ZoweConnectionSettings.getInstance().getUssPathHistory());
 
                 applyUssFilter();
             });
@@ -2551,17 +2659,25 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             JMenuItem createDir = new JMenuItem("Create Directory...", AllIcons.Actions.NewFolder);
             JMenuItem rename = new JMenuItem("Rename...", AllIcons.Actions.Edit);
             JMenuItem delete = new JMenuItem("Delete...", AllIcons.Actions.GC);
+            JMenuItem openWithEncoding = new JMenuItem("Open With Encoding...", AllIcons.Actions.MenuOpen);
+            JMenuItem changeTag = new JMenuItem("Change Tag (chtag)...", AllIcons.Actions.Edit);
 
             open.addActionListener(e -> openUssSelection(project));
             createFile.addActionListener(e -> createUssFileFromSelection(project, item));
             createDir.addActionListener(e -> createUssDirFromSelection(project, item));
             rename.addActionListener(e -> renameUssSelection(project, item));
             delete.addActionListener(e -> deleteUssSelection(project, item));
+            changeTag.addActionListener(e -> changeUssTag(project, item));
+            openWithEncoding.addActionListener(e -> openUssWithEncoding(project, item));
 
             menu.add(open);
             menu.add(createFile);
             menu.add(createDir);
             menu.addSeparator();
+            if (!item.isDirectory()) {
+                menu.add(openWithEncoding);
+                menu.add(changeTag);
+            }
             menu.add(rename);
             menu.add(delete);
         } else {
@@ -2690,6 +2806,92 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                             project,
                             "Could not create USS directory " + newPath + ".\n\n" + ex.getMessage(),
                             "Create USS Directory Failed");
+                });
+            }
+        });
+    }
+
+    private void openUssWithEncoding(
+            Project project,
+            UssNode item) {
+
+        String fullPath = item.fullPath();
+
+        String encoding = Messages.showEditableChooseDialog(
+                "Open the file decoding it as this code set (the file tag is not changed).\n"
+                        + "Saving from the editor also writes it with this code set.",
+                "Open With Encoding: " + item.file.getName(),
+                Messages.getQuestionIcon(),
+                new String[]{"ISO8859-1", "UTF-8", "IBM-1047", "IBM-037", "IBM-850"},
+                "ISO8859-1",
+                null);
+
+        if (encoding == null || encoding.trim().isEmpty()) {
+            return;
+        }
+
+        String selected = encoding.trim();
+        setState("Opening USS file " + fullPath + " as " + selected + "...");
+
+        runBackground(project, () -> {
+            String content = new UssService(ZoweConnectionProvider.current())
+                    .readText(fullPath, selected);
+
+            SwingUtilities.invokeLater(() -> {
+                remoteEditors.openUss(fullPath, content, selected);
+                setState("Opened " + fullPath + " as " + selected + ".");
+            });
+        });
+    }
+
+    private static final String TAG_BINARY = "binary";
+    private static final String TAG_REMOVE = "remove tag (untagged)";
+
+    private void changeUssTag(
+            Project project,
+            UssNode item) {
+
+        String targetPath = item.fullPath();
+
+        // Editable, so any other code set (for example IBM-037) can be typed in.
+        String choice = Messages.showEditableChooseDialog(
+                "Select the encoding the file is actually stored in, or type another code set.\n"
+                        + "Use ISO8859-1 for ASCII files that show up as garbage when opened.",
+                "Change Tag: " + item.file.getName(),
+                Messages.getQuestionIcon(),
+                new String[]{"ISO8859-1", "UTF-8", "IBM-1047", "IBM-037", TAG_BINARY, TAG_REMOVE},
+                "ISO8859-1",
+                null);
+
+        if (choice == null || choice.trim().isEmpty()) {
+            return;
+        }
+
+        String selected = choice.trim();
+        setState("Changing tag of " + targetPath + " to " + selected + "...");
+
+        runBackground(project, () -> {
+            try {
+                UssService service = new UssService(ZoweConnectionProvider.current());
+                if (TAG_BINARY.equals(selected)) {
+                    service.setBinaryTag(targetPath);
+                } else if (TAG_REMOVE.equals(selected)) {
+                    service.removeTag(targetPath);
+                } else {
+                    service.setTextTag(targetPath, selected);
+                }
+
+                SwingUtilities.invokeLater(() -> {
+                    setState("Tagged " + targetPath + " as " + selected
+                            + ". Close and reopen the file if it is already open.");
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    setState("Could not change tag of " + targetPath + ": " + ex.getMessage());
+                    Messages.showErrorDialog(
+                            project,
+                            "Could not change tag of " + targetPath + ".\n\n" + ex.getMessage(),
+                            "Change Tag Failed");
                 });
             }
         });
