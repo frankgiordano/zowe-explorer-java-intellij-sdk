@@ -2,6 +2,8 @@ package org.zowe.explorerjava;
 
 import zowe.client.sdk.core.ZosConnection;
 import zowe.client.sdk.rest.exception.ZosmfRequestException;
+import zowe.client.sdk.zosjobs.methods.JobCancel;
+import zowe.client.sdk.zosjobs.methods.JobDelete;
 import zowe.client.sdk.zosjobs.methods.JobGet;
 import zowe.client.sdk.zosjobs.methods.JobMonitor;
 import zowe.client.sdk.zosjobs.methods.JobSubmit;
@@ -21,11 +23,15 @@ public final class JobService {
     private final JobGet get;
     private final JobSubmit submit;
     private final JobMonitor monitor;
+    private final JobCancel cancel;
+    private final JobDelete delete;
 
     public JobService(final ZosConnection connection) {
         this.get = new JobGet(connection);
         this.submit = new JobSubmit(connection);
         this.monitor = new JobMonitor(connection);
+        this.cancel = new JobCancel(connection);
+        this.delete = new JobDelete(connection);
     }
 
     public List<Job> listMine() throws ZosmfRequestException {
@@ -156,5 +162,19 @@ public final class JobService {
             throws ZosmfRequestException {
 
         return get.getSpoolContent(file);
+    }
+
+    public void cancelJob(
+            final Job job)
+            throws ZosmfRequestException {
+
+        cancel.cancelByJob(job, "2.0");
+    }
+
+    public void deleteJob(
+            final Job job)
+            throws ZosmfRequestException {
+
+        delete.deleteByJob(job, "2.0");
     }
 }

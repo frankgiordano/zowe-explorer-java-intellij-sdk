@@ -31,7 +31,7 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         id = "com.frankgiordano.zowe.explorer.java"
-        name = "z/OS Navigator for Zowe"
+        name = "z/OS Workbench for Zowe"
         version = project.version.toString()
         ideaVersion {
             sinceBuild = "251"
@@ -47,14 +47,20 @@ intellijPlatform {
                 <li><b>Data Sets & PDS Members</b>: Search data sets with persistent mask history. Browse, create, edit, rename, and delete PDS/PDSE members and Sequential (PS) files.</li>
                 <li><b>Unix System Services (USS)</b>: Full file tree browser with smart sorting (directories first), real-time live filtering (wildcards like <code>*.sh</code>), right-click file/directory CRUD actions, and lenient handling for ASCII control characters.</li>
                 <li><b>Remote Editor Integration</b>: Edit remote Data Sets and USS text files directly in native IntelliJ editor tabs with automatic syntax highlighting and <code>Ctrl+S</code> writeback. Includes optimistic concurrency protection against remote mainframe changes.</li>
-                <li><b>JES Job Management</b>: Monitor jobs, view spool outputs, submit JCL data sets, and download spool files.</li>
+                <li><b>JES Job Management</b>: Monitor jobs, view spool outputs, submit JCL data sets, download spool files, with context-aware right-click actions (Cancel active jobs or Purge completed job output).</li>
+                <li><b>Symbols & Variables</b>: Manage z/OS System Symbols and z/OSMF System Variables with scope filtering, real-time search, and full CRUD operations (Add, Edit, Delete, Rename).</li>
                 <li><b>Interactive Commands</b>: Stateful TSO terminal session, MVS console commands, and remote USS SSH execution.</li>
             </ul>
         """.trimIndent()
         changeNotes = """
+            <h4>v1.0.3</h4>
+            <ul>
+                <li><b>Plugin Renaming</b>: Renamed plugin to <b>z/OS Workbench for Zowe</b> and updated tool window sidebar title to <b>z/OS Workbench</b>.</li>
+                <li><b>Context-Aware Job Actions</b>: Added status-sensitive right-click job actions: <i>Cancel Job</i> for active/queued jobs (via <code>JobCancel</code>), and <i>Purge Job</i> for completed/OUTPUT jobs (via <code>JobDelete</code>).</li>
+                <li><b>Symbols & Variables Tab</b>: Added a dedicated tab to browse z/OS System Symbols and manage z/OSMF System Variables with system/sysplex scope controls, real-time filtering, Add, Edit, Delete, and Rename actions.</li>
+            </ul>
             <h4>v1.0.2</h4>
             <ul>
-                <li> Initial release of the Java SDK Edition under the new name: z/OS Navigator for Zowe.</li>
                 <li><b>Spool Editor Integration & Context Menu</b>: Added right-click context menu options to Job and Spool tree nodes (<i>Open in Main Editor</i>, <i>Download Spool As...</i>, <i>View Spool Content</i>, <i>Load Spool Files</i>, <i>Show JCL</i>) and added an <i>Open in Editor</i> toolbar button to view spool output directly in native IntelliJ editor tabs.</li>
             </ul>
             <h4>v1.0.1</h4>

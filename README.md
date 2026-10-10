@@ -1,5 +1,4 @@
-
-# z/OS Navigator for Zowe
+# z/OS Workbench for Zowe
 
 Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by [**Zowe Client Java SDK**](https://github.com/zowe/zowe-client-java-sdk).
 
@@ -61,16 +60,30 @@ I’m approaching this project as both an alternative implementation and an expe
 - **List & Inspect Jobs**: Fetch z/OS jobs via `JobGet`.
 - **Submit JCL**: Submit JCL data sets directly to JES using `JobSubmit`.
 - **Real-Time Job Monitoring**: Track jobs until `OUTPUT` status using `JobMonitor.waitByOutputStatus`.
+- **Context-Aware Job Actions**:
+    - **Cancel Job**: Right-click active/queued job -> `Cancel Job` to cancel or stop running jobs using `JobCancel`.
+    - **Purge Job**: Right-click completed (`OUTPUT`) job -> `Purge Job` to delete and purge job output spool files on z/OS using `JobDelete`.
 - **Spool Output & Workflows**:
     - **Double-Click Workflows**: Double-clicking a job automatically fetches and expands its spool files; double-clicking a spool file opens its content directly in the details viewer.
     - **Right-Click Context Menu & Main Editor Integration**:
-        - Right-click spool file -> **Open in Main Editor** (or toolbar button **Open in Editor**): Opens the spool output in a full IntelliJ editor tab as a read-only remote file (`zowe-spool://`).
+        - Right-click spool file -> **Open in Main Editor** (or toolbar button **Open in Editor**): Opens the spool output in a full IntelliJ editor tab as a remote file (`zowe-spool://`).
         - Right-click spool file -> **Download Spool As...**: Downloads the spool output to the local file system.
         - Right-click spool file -> **View Spool Content**: Displays the spool output in the tool window details viewer.
         - Right-click job node -> **Load Spool Files** / **Show JCL**: Fetches spool file listings or job JCL directly.
     - **Clean Spool Labels**: Spool tree nodes display their concise `DD Name` (e.g. `JESJCL`, `JESMSGLG`, `SYSPRINT`).
     - **Formatted Spool Metadata**: Single-clicking a spool file displays formatted key-value metadata line-by-line (DD Name, Job ID, Job Name, Step Name, Proc Step, RECFM, LRECL, Byte/Record Count, Class, Records URL).
     - **Save Spool As...**: Save spool files to the local disk as text files.
+
+### 🏷️ Symbols & Variables Management
+- **Scope Selection**: Select between "Local System" and defined sysplex/system targets populated dynamically from z/OSMF topology (`ZosmfSystems`).
+- **Type Toggle**: Switch seamlessly between **System Symbols** (read-only parmlib symbols) and **System Variables** (read-write z/OSMF system variables via `VariableGet`).
+- **Live Search & Filtering**: Instant, client-side filtering across variable names, values, and descriptions as you type.
+- **Variable CRUD & Operations**:
+    - **Add Variable**: Create new z/OSMF system variables with Name, Value, and Description via `VariableCreate`.
+    - **Edit Variable**: Modify existing variable values and descriptions (`VariableCreate`).
+    - **Rename Variable**: Rename variables on z/OSMF (`VariableCreate` and `VariableDelete`).
+    - **Delete Variable**: Multi-select deletion of system variables with confirmation prompt (`VariableDelete`).
+    - **Copy Name / Value**: Quick right-click context menu actions to copy variable names or values to the clipboard.
 
 ### 💻 Commands & Terminals
 - **Stateful TSO Terminal**: Issue stateful TSO commands (`TsoStart`, `TsoCmd.issueCommandByTsoSessionId`, `TsoStop`) reusing a single TSO address space across commands.
@@ -95,10 +108,11 @@ I’m approaching this project as both an alternative implementation and an expe
 IntelliJ UI (Zowe Tool Window)
   │
   ├── Connection Profile Manager (PasswordSafe & Persistence)
-  ├── JobService -------- JobGet / JobSubmit / JobMonitor
+  ├── JobService -------- JobGet / JobSubmit / JobMonitor / JobCancel / JobDelete
   ├── DataSetService ---- DsnList / DsnGet / DsnWrite / DsnDelete / DsnUpdate
   ├── UssService -------- UssList / UssGet / UssWrite / UssCreate / UssDelete / UssMove
   ├── CommandService ---- TsoStart / TsoCmd / TsoStop / ConsoleCmd / UssCmd
+  ├── SymbolService ----- VariableGet / VariableCreate / VariableDelete / ZosmfSystems
   └── RemoteEditorManager
        ├── LightVirtualFile / FileEditorManager
        └── Action & Document Save Listeners -> DsnWrite / UssWrite
@@ -124,7 +138,7 @@ gradlew runIde
 ```
 
 In the sandbox IDE:
-1. Open **View -> Tool Windows -> Zowe Java Explorer**.
+1. Open **View -> Tool Windows -> z/OS Workbench**.
 2. Click **Manage...** or **Connection** to set up a z/OS connection profile (z/OSMF host, port, credentials).
 3. Click **Test Connection** to verify settings.
 4. Browse **Data Sets**, **USS**, **Jobs**, and execute **Commands**.
@@ -140,7 +154,7 @@ gradlew buildPlugin
 The compiled plugin package ZIP will be located in:
 
 ```text
-build/distributions/com.frankgiordano.zos.navigator-1.0.2.zip
+build/distributions/com.frankgiordano.zowe.explorer.java-1.0.3.zip
 ```
 
 To install locally in IntelliJ:
@@ -158,7 +172,7 @@ To install locally in IntelliJ:
    ```bash
    gradlew buildPlugin
    ```
-   Verify that the output package `build/distributions/com.frankgiordano.zos.navigator-1.0.2.zip` exists.
+   Verify that the output package `build/distributions/com.frankgiordano.zowe.explorer.java-1.0.3.zip` exists.
 
 2. **Verify Plugin Compatibility**:
    ```bash

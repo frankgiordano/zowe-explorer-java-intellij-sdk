@@ -15,7 +15,7 @@ import java.util.UUID;
 
 @State(name = "ZoweJavaExplorerSettings", storages = @Storage("zoweJavaExplorer.xml"))
 public final class ZoweConnectionSettings implements PersistentStateComponent<ZoweConnectionSettings.StateData> {
-    private static final String CREDENTIAL_PREFIX = "Zowe Java Explorer z/OSMF: ";
+    private static final String CREDENTIAL_PREFIX = "z/OS Workbench z/OSMF: ";
     private static final String LEGACY_CREDENTIAL_KEY = "Zowe Java Explorer z/OSMF";
 
     public static final class StateData {

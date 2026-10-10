@@ -240,7 +240,7 @@ public final class RemoteEditorManager implements Disposable {
                     ApplicationManager.getApplication().invokeLater(() ->
                             Messages.showInfoMessage(project,
                                     "Reloaded the latest z/OS content for " + resource.target + ".",
-                                    "Zowe Java Explorer"));
+                                    "z/OS Workbench for Zowe"));
                 } else {
                     ApplicationManager.getApplication().invokeLater(() ->
                             Messages.showWarningDialog(project,
@@ -252,7 +252,7 @@ public final class RemoteEditorManager implements Disposable {
                 ApplicationManager.getApplication().invokeLater(() ->
                         Messages.showErrorDialog(project,
                                 "Could not safely save " + resource.target + " to z/OS.\n\n" + ex,
-                                "Zowe Java Explorer"));
+                                "z/OS Workbench for Zowe"));
             } finally {
                 resource.saveInProgress.set(false);
             }
