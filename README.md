@@ -1,12 +1,14 @@
 # z/OS Workbench for Zowe
 
-Lightweight z/OS Explorer plugin for IntelliJ IDEA powered by [**Zowe Client Java SDK**](https://github.com/zowe/zowe-client-java-sdk).
+Lightweight z/OS plugin for IntelliJ IDEA powered by [**Zowe Client Java SDK**](https://github.com/zowe/zowe-client-java-sdk).
 
-This is an alternative IntelliJ plugin for performing z/OS operations directly from the IDE, offering a different approach from the existing plugin provided by the Zowe community on the JetBrains Marketplace.
+Connect seamlessly to IBM z/OS mainframes directly from IntelliJ IDEA to manage Data Sets, Unix System Services (USS) files, JES Jobs, TSO commands, and MVS consoles and much more. 
 
-This plugin is built on the **Zowe Client Java SDK**, while the existing Zowe community plugin is based on the **Zowe Client Kotlin SDK**.
+This plugin is built on the **Zowe Client Java SDK** project.
 
-I’m approaching this project as both an alternative implementation and an experiment—exploring different design choices, features, and workflows while potentially expanding the plugin to provide broader z/OS API coverage through the Zowe Client Java SDK.
+I’m approaching this project as both an alternative implementation and an experiment—exploring different design choices, features, and workflows while potentially expanding the plugin to provide broader z/OS API coverage through the Zowe Client Java SDK.  
+
+NOTE: This is an independent community contribution and is not officially affiliated with the Open Mainframe Project or IBM.   
 
 ---
 
