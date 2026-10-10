@@ -46,7 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Main Zowe Explorer tool window.
+ * Main z/OS Navigator for Zowetool window.
  * <p>
  * UI code talks only to Explorer service facades. z/OSMF access is delegated to the
  * Zowe Client Java SDK through JobService, DataSetService, and UssService.
@@ -77,7 +77,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
     /**
      * Job monitoring cadence.
      * <p>
-     * This mirrors the general approach used by the Kotlin Zowe Explorer:
+     * This mirrors the general approach used by the Kotlin z/OS Navigator for Zowe:
      * perform periodic status requests instead of keeping one blocking
      * polling operation alive.
      */
@@ -437,6 +437,9 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         JButton spoolContent =
                 new JButton("Open Spool");
 
+        JButton openSpoolEditor =
+                new JButton("Open in Editor");
+
         JButton saveSpool =
                 new JButton("Save Spool As...");
 
@@ -476,6 +479,9 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         spoolContent.addActionListener(
                 e -> loadSelectedSpool(project));
 
+        openSpoolEditor.addActionListener(
+                e -> openSpoolInEditor(project));
+
         saveSpool.addActionListener(
                 e -> saveSelectedSpool(project));
 
@@ -496,6 +502,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         actionToolbar.add(jcl);
         actionToolbar.add(spool);
         actionToolbar.add(spoolContent);
+        actionToolbar.add(openSpoolEditor);
         actionToolbar.add(saveSpool);
 
         north.add(filterToolbar);
@@ -540,6 +547,24 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
 
         jobsTree.addMouseListener(
                 new MouseAdapter() {
+                    @Override
+                    public void mousePressed(
+                            MouseEvent e) {
+
+                        maybeShowJobPopup(
+                                project,
+                                e);
+                    }
+
+                    @Override
+                    public void mouseReleased(
+                            MouseEvent e) {
+
+                        maybeShowJobPopup(
+                                project,
+                                e);
+                    }
+
                     @Override
                     public void mouseClicked(MouseEvent e) {
                         if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
@@ -1195,6 +1220,107 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                         "Loaded spool content.");
             });
         });
+    }
+
+    private void openSpoolInEditor(Project project) {
+        DefaultMutableTreeNode node = selectedNode(jobsTree);
+        if (node == null || !(node.getUserObject() instanceof SpoolNode spool)) {
+            Messages.showInfoMessage(
+                    project,
+                    "Select a spool file first.",
+                    "Zowe Java Explorer");
+            return;
+        }
+        openSpoolInEditor(project, spool);
+    }
+
+    private void openSpoolInEditor(Project project, SpoolNode spool) {
+        if (spool == null || spool.file == null) {
+            Messages.showInfoMessage(
+                    project,
+                    "Select a spool file first.",
+                    "Zowe Java Explorer");
+            return;
+        }
+
+        JobFile file = spool.file;
+        setState("Downloading spool " + file.getDdName() + " for " + file.getJobName() + " / " + file.getJobId() + "...");
+
+        runBackground(project, () -> {
+            String content =
+                    new JobService(ZoweConnectionProvider.current())
+                            .getSpool(file);
+
+            SwingUtilities.invokeLater(() -> {
+                remoteEditors.openSpool(file, content);
+                setState("Opened spool " + file.getDdName() + " in editor.");
+            });
+        });
+    }
+
+    private void maybeShowJobPopup(
+            Project project,
+            MouseEvent event) {
+
+        if (!event.isPopupTrigger()) {
+            return;
+        }
+
+        TreePath path =
+                jobsTree.getPathForLocation(
+                        event.getX(),
+                        event.getY());
+
+        if (path == null) {
+            return;
+        }
+
+        jobsTree.setSelectionPath(path);
+
+        DefaultMutableTreeNode node =
+                (DefaultMutableTreeNode)
+                        path.getLastPathComponent();
+
+        Object value =
+                node.getUserObject();
+
+        if (value instanceof SpoolNode spool) {
+            JPopupMenu menu = new JPopupMenu();
+
+            JMenuItem openEditor = new JMenuItem("Open in Main Editor", AllIcons.Actions.MenuOpen);
+            JMenuItem saveSpool = new JMenuItem("Download Spool As...", AllIcons.Actions.Download);
+            JMenuItem viewSpool = new JMenuItem("View Spool Content", AllIcons.Actions.Preview);
+
+            openEditor.addActionListener(e -> openSpoolInEditor(project, spool));
+            saveSpool.addActionListener(e -> saveSelectedSpool(project));
+            viewSpool.addActionListener(e -> loadSelectedSpool(project));
+
+            menu.add(openEditor);
+            menu.add(saveSpool);
+            menu.addSeparator();
+            menu.add(viewSpool);
+
+            menu.show(
+                    event.getComponent(),
+                    event.getX(),
+                    event.getY());
+        } else if (value instanceof JobNode jobNode) {
+            JPopupMenu menu = new JPopupMenu();
+
+            JMenuItem loadSpools = new JMenuItem("Load Spool Files", AllIcons.Nodes.Folder);
+            JMenuItem showJcl = new JMenuItem("Show JCL", AllIcons.Actions.ShowCode);
+
+            loadSpools.addActionListener(e -> loadSpoolFiles(project));
+            showJcl.addActionListener(e -> loadJcl(project));
+
+            menu.add(loadSpools);
+            menu.add(showJcl);
+
+            menu.show(
+                    event.getComponent(),
+                    event.getX(),
+                    event.getY());
+        }
     }
 
     /**
