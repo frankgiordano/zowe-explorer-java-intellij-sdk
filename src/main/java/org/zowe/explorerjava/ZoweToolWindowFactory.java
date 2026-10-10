@@ -22,21 +22,27 @@ import zowe.client.sdk.zosfiles.dsn.model.Member;
 import zowe.client.sdk.zosfiles.uss.model.UnixFile;
 import zowe.client.sdk.zosjobs.model.Job;
 import zowe.client.sdk.zosjobs.model.JobFile;
+import zowe.client.sdk.zosmfinfo.model.DefinedSystem;
+import zowe.client.sdk.zosvariables.response.VariableResponse;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.table.DefaultTableModel;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import java.awt.*;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Executors;
@@ -46,7 +52,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Main z/OS Navigator for Zowetool window.
+ * Main z/OS Workbench for Zowe tool window.
  * <p>
  * UI code talks only to Explorer service facades. z/OSMF access is delegated to the
  * Zowe Client Java SDK through JobService, DataSetService, and UssService.
@@ -77,7 +83,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
     /**
      * Job monitoring cadence.
      * <p>
-     * This mirrors the general approach used by the Kotlin z/OS Navigator for Zowe:
+     * This mirrors the general approach used by the Kotlin z/OS Workbench for Zowe:
      * perform periodic status requests instead of keeping one blocking
      * polling operation alive.
      */
@@ -173,6 +179,27 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
     private final JBTextField sshInput =
             new JBTextField();
 
+    // Symbols & Variables
+    private final DefaultTableModel symbolsTableModel = new DefaultTableModel(
+            new Object[]{"Name", "Value", "Description"}, 0) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final JTable symbolsTable = new JTable(symbolsTableModel);
+    private final JComboBox<String> symbolSystemCombo = new ComboBox<>();
+    private final JComboBox<String> symbolTypeCombo = new ComboBox<>(new String[]{"System Symbols", "System Variables"});
+    private final JBTextField symbolFilterField = new JBTextField();
+    private final JBLabel symbolsStatusLabel = new JBLabel("Select scope/type and click Refresh.");
+    private final JButton symbolAddButton = new JButton("Add...", AllIcons.General.Add);
+    private final JButton symbolEditButton = new JButton("Edit...", AllIcons.Actions.Edit);
+    private final JButton symbolDeleteButton = new JButton("Delete", AllIcons.Actions.GC);
+    private final JButton symbolRenameButton = new JButton("Rename...", AllIcons.Actions.Replace);
+    private List<DefinedSystem> definedSystemsList = new ArrayList<>();
+    private List<VariableResponse> rawSymbolsList = new ArrayList<>();
+    private boolean isUpdatingSymbolCombo = false;
+
     private RemoteEditorManager remoteEditors;
     private volatile CommandService commandService;
 
@@ -238,6 +265,12 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         tabs.addTab(
                 "Commands",
                 createCommandsPanel(project));
+
+        tabs.addTab(
+                "Symbols",
+                createSymbolsPanel(project));
+
+        refreshSystemsList(project);
 
         panel.add(
                 tabs,
@@ -368,6 +401,11 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
          * connection/user.
          */
         refreshJobs(project);
+
+        /*
+         * Refresh system list for Symbols tab.
+         */
+        refreshSystemsList(project);
     }
 
     // -------------------------------------------------------------------------
@@ -960,7 +998,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 Messages.showErrorDialog(
                         project,
                         ex.toString(),
-                        "Zowe Java Explorer");
+                        "z/OS Workbench for Zowe");
             });
         }
     }
@@ -1195,7 +1233,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             Messages.showInfoMessage(
                     project,
                     "Select a spool file first.",
-                    "Zowe Java Explorer");
+                    "z/OS Workbench for Zowe");
 
             return;
         }
@@ -1228,7 +1266,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             Messages.showInfoMessage(
                     project,
                     "Select a spool file first.",
-                    "Zowe Java Explorer");
+                    "z/OS Workbench for Zowe");
             return;
         }
         openSpoolInEditor(project, spool);
@@ -1239,7 +1277,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             Messages.showInfoMessage(
                     project,
                     "Select a spool file first.",
-                    "Zowe Java Explorer");
+                    "z/OS Workbench for Zowe");
             return;
         }
 
@@ -1316,11 +1354,93 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             menu.add(loadSpools);
             menu.add(showJcl);
 
+            Job job = jobNode.job;
+            String status = job != null ? job.getStatus() : null;
+            boolean isOutput = status != null && "OUTPUT".equalsIgnoreCase(status.trim());
+
+            menu.addSeparator();
+            if (isOutput) {
+                JMenuItem purgeJob = new JMenuItem("Purge Job", AllIcons.Actions.GC);
+                purgeJob.addActionListener(e -> purgeSelectedJob(project, job));
+                menu.add(purgeJob);
+            } else {
+                JMenuItem cancelJob = new JMenuItem("Cancel Job", AllIcons.Actions.Cancel);
+                cancelJob.addActionListener(e -> cancelSelectedJob(project, job));
+                menu.add(cancelJob);
+            }
+
             menu.show(
                     event.getComponent(),
                     event.getX(),
                     event.getY());
         }
+    }
+
+    private void cancelSelectedJob(
+            final Project project,
+            final Job job) {
+
+        if (job == null) {
+            return;
+        }
+
+        int result = Messages.showYesNoDialog(
+                project,
+                "Are you sure you want to cancel job '" + job.getJobName() + "' (" + job.getJobId() + ")?",
+                "Cancel Job",
+                "Cancel Job",
+                "Keep Job",
+                Messages.getQuestionIcon());
+
+        if (result != Messages.YES) {
+            return;
+        }
+
+        setState("Cancelling job " + job.getJobName() + " (" + job.getJobId() + ")...");
+
+        runBackground(project, () -> {
+            new JobService(ZoweConnectionProvider.current()).cancelJob(job);
+
+            SwingUtilities.invokeLater(() -> {
+                setState("Cancelled job " + job.getJobName() + " (" + job.getJobId() + ").");
+                refreshJobs(project);
+            });
+        });
+    }
+
+    private void purgeSelectedJob(
+            final Project project,
+            final Job job) {
+
+        if (job == null) {
+            return;
+        }
+
+        int result = Messages.showYesNoDialog(
+                project,
+                "Are you sure you want to purge job '" + job.getJobName() + "' (" + job.getJobId() + ")?\n\nThis will delete all output spool files for this job on z/OS.",
+                "Purge Job",
+                "Purge",
+                "Keep",
+                Messages.getQuestionIcon());
+
+        if (result != Messages.YES) {
+            return;
+        }
+
+        setState("Purging job " + job.getJobName() + " (" + job.getJobId() + ")...");
+
+        runBackground(project, () -> {
+            new JobService(ZoweConnectionProvider.current()).deleteJob(job);
+
+            SwingUtilities.invokeLater(() -> {
+                DefaultMutableTreeNode node = findJobNode(job);
+                if (node != null) {
+                    jobsModel.removeNodeFromParent(node);
+                }
+                setState("Purged job " + job.getJobName() + " (" + job.getJobId() + ").");
+            });
+        });
     }
 
     /**
@@ -1342,7 +1462,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             Messages.showInfoMessage(
                     project,
                     "Select a spool file first.",
-                    "Zowe Java Explorer");
+                    "z/OS Workbench for Zowe");
 
             return;
         }
@@ -1451,7 +1571,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                         project,
                         "Spool output saved to:\n\n"
                                 + destination,
-                        "Zowe Java Explorer");
+                        "z/OS Workbench for Zowe");
             });
         });
     }
@@ -2036,7 +2156,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             Messages.showInfoMessage(
                     project,
                     "Enter a data set mask first.",
-                    "Zowe Java Explorer");
+                    "z/OS Workbench for Zowe");
 
             return;
         }
@@ -2090,7 +2210,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             Messages.showInfoMessage(
                     project,
                     "Select a partitioned data set first.",
-                    "Zowe Java Explorer");
+                    "z/OS Workbench for Zowe");
 
             return;
         }
@@ -2112,7 +2232,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             Messages.showInfoMessage(
                     project,
                     "Cannot load members for " + dsn + " because it is " + reason + ".",
-                    "Zowe Java Explorer");
+                    "z/OS Workbench for Zowe");
             return;
         }
 
@@ -2175,7 +2295,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                         setState("Could not load members for " + dsn + ": " + ex.getMessage());
                         Messages.showErrorDialog(project,
                                 "Could not load members for " + dsn + ".\n\n" + ex.getMessage(),
-                                "Zowe Java Explorer");
+                                "z/OS Workbench for Zowe");
                     }
                 });
             }
@@ -2210,7 +2330,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 Messages.showInfoMessage(
                         project,
                         "Data set " + dataset.getDsname() + " is a Partitioned Data Set (PDS). Select or double-click a member inside it to open.",
-                        "Zowe Java Explorer");
+                        "z/OS Workbench for Zowe");
             } else if (isSequential(dataset) || dataset.getDsorg() == null || dataset.getDsorg().isBlank()) {
                 openDataSetTarget(project, dataset.getDsname());
             } else {
@@ -2219,7 +2339,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 Messages.showInfoMessage(
                         project,
                         "Nothing to display for non-sequential and non-partitioned data set " + dataset.getDsname() + " (DSORG: " + dsorg + ").",
-                        "Zowe Java Explorer");
+                        "z/OS Workbench for Zowe");
             }
         }
     }
@@ -2259,7 +2379,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                         setState("Could not open " + target + ": " + ex.getMessage());
                         Messages.showErrorDialog(project,
                                 "Could not open " + target + ".\n\n" + ex.getMessage(),
-                                "Zowe Java Explorer");
+                                "z/OS Workbench for Zowe");
                     }
                 });
             }
@@ -2290,7 +2410,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                 Messages.showInfoMessage(
                         project,
                         "Nothing to display for non-sequential and non-partitioned data set " + dataset.getDsname() + " (DSORG: " + dsorg + ").",
-                        "Zowe Java Explorer");
+                        "z/OS Workbench for Zowe");
             }
         } else if (value instanceof MemberNode) {
             openDataSetSelection(project);
@@ -3719,7 +3839,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
         Messages.showInfoMessage(
                 project,
                 "Select a job first.",
-                "Zowe Java Explorer");
+                "z/OS Workbench for Zowe");
 
         return null;
     }
@@ -3798,7 +3918,7 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
             Messages.showErrorDialog(
                     project,
                     formatErrorMessage(ex),
-                    "Zowe Java Explorer");
+                    "z/OS Workbench for Zowe");
         });
     }
 
@@ -4345,6 +4465,444 @@ public final class ZoweToolWindowFactory implements ToolWindowFactory {
                     + ", "
                     + file.getSize()
                     + " bytes]";
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Symbols & Variables Tab
+    // -------------------------------------------------------------------------
+
+    private JComponent createSymbolsPanel(Project project) {
+        JPanel panel = new JPanel(new BorderLayout(6, 6));
+
+        JPanel toolbar = new JPanel(new WrapLayout(FlowLayout.LEFT, 4, 4));
+
+        toolbar.add(new JBLabel("Scope:"));
+        toolbar.add(symbolSystemCombo);
+        toolbar.add(new JBLabel("Type:"));
+        toolbar.add(symbolTypeCombo);
+        toolbar.add(new JBLabel("Filter:"));
+        symbolFilterField.setPreferredSize(new Dimension(140, 26));
+        toolbar.add(symbolFilterField);
+
+        JButton refreshBtn = new JButton("Refresh", AllIcons.Actions.Refresh);
+        refreshBtn.addActionListener(e -> refreshSymbols(project));
+
+        symbolAddButton.addActionListener(e -> addVariable(project));
+        symbolEditButton.addActionListener(e -> editSelectedVariable(project));
+        symbolDeleteButton.addActionListener(e -> deleteSelectedVariables(project));
+        symbolRenameButton.addActionListener(e -> renameSelectedVariable(project));
+
+        toolbar.add(refreshBtn);
+        toolbar.add(symbolAddButton);
+        toolbar.add(symbolEditButton);
+        toolbar.add(symbolDeleteButton);
+        toolbar.add(symbolRenameButton);
+
+        symbolTypeCombo.addActionListener(e -> {
+            boolean isVariable = symbolTypeCombo.getSelectedIndex() == 1;
+            symbolAddButton.setEnabled(isVariable);
+            symbolEditButton.setEnabled(isVariable);
+            symbolDeleteButton.setEnabled(isVariable);
+            symbolRenameButton.setEnabled(isVariable);
+            refreshSymbols(project);
+        });
+
+        symbolSystemCombo.addActionListener(e -> {
+            if (!isUpdatingSymbolCombo) {
+                refreshSymbols(project);
+            }
+        });
+
+        symbolFilterField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                applySymbolsFilter();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                applySymbolsFilter();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                applySymbolsFilter();
+            }
+        });
+
+        symbolsTable.setAutoCreateRowSorter(true);
+        symbolsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+
+        JPopupMenu tableMenu = new JPopupMenu();
+        JMenuItem editItem = new JMenuItem("Edit Value...", AllIcons.Actions.Edit);
+        JMenuItem renameItem = new JMenuItem("Rename...", AllIcons.Actions.Replace);
+        JMenuItem deleteItem = new JMenuItem("Delete", AllIcons.Actions.GC);
+        JMenuItem copyNameItem = new JMenuItem("Copy Name", AllIcons.Actions.Copy);
+        JMenuItem copyValueItem = new JMenuItem("Copy Value", AllIcons.Actions.Copy);
+
+        editItem.addActionListener(e -> editSelectedVariable(project));
+        renameItem.addActionListener(e -> renameSelectedVariable(project));
+        deleteItem.addActionListener(e -> deleteSelectedVariables(project));
+        copyNameItem.addActionListener(e -> copySelectedTableCell(0));
+        copyValueItem.addActionListener(e -> copySelectedTableCell(1));
+
+        tableMenu.add(editItem);
+        tableMenu.add(renameItem);
+        tableMenu.add(deleteItem);
+        tableMenu.addSeparator();
+        tableMenu.add(copyNameItem);
+        tableMenu.add(copyValueItem);
+
+        symbolsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    if (symbolTypeCombo.getSelectedIndex() == 1) {
+                        editSelectedVariable(project);
+                    }
+                }
+            }
+
+            private void maybeShowPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int row = symbolsTable.rowAtPoint(e.getPoint());
+                    if (row != -1 && !symbolsTable.isRowSelected(row)) {
+                        symbolsTable.setRowSelectionInterval(row, row);
+                    }
+                    boolean isVar = symbolTypeCombo.getSelectedIndex() == 1;
+                    editItem.setEnabled(isVar);
+                    renameItem.setEnabled(isVar);
+                    deleteItem.setEnabled(isVar);
+                    tableMenu.show(e.getComponent(), e.getX(), e.getY());
+                }
+            }
+        });
+
+        // Default to System Symbols
+        symbolAddButton.setEnabled(false);
+        symbolEditButton.setEnabled(false);
+        symbolDeleteButton.setEnabled(false);
+        symbolRenameButton.setEnabled(false);
+
+        panel.add(toolbar, BorderLayout.NORTH);
+        panel.add(new JBScrollPane(symbolsTable), BorderLayout.CENTER);
+        panel.add(symbolsStatusLabel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private void refreshSystemsList(Project project) {
+        runBackground(project, () -> {
+            List<DefinedSystem> systems = new SymbolService(ZoweConnectionProvider.current()).listDefinedSystems();
+            SwingUtilities.invokeLater(() -> {
+                definedSystemsList = systems;
+                isUpdatingSymbolCombo = true;
+                try {
+                    String prevSelected = (String) symbolSystemCombo.getSelectedItem();
+                    symbolSystemCombo.removeAllItems();
+                    symbolSystemCombo.addItem("Local System");
+                    for (DefinedSystem sys : systems) {
+                        String sysName = sys.getSystemName();
+                        String plexName = sys.getSysplexName();
+                        String label = sysName != null ? sysName : "";
+                        if (plexName != null && !plexName.isBlank()) {
+                            label += " (" + plexName + ")";
+                        }
+                        symbolSystemCombo.addItem(label);
+                    }
+                    if (prevSelected != null) {
+                        symbolSystemCombo.setSelectedItem(prevSelected);
+                    }
+                } finally {
+                    isUpdatingSymbolCombo = false;
+                }
+                refreshSymbols(project);
+            });
+        });
+    }
+
+    private String[] getSelectedSysplexAndSystem() {
+        int index = symbolSystemCombo.getSelectedIndex();
+        if (index <= 0 || definedSystemsList == null || index - 1 >= definedSystemsList.size()) {
+            return new String[]{"", ""};
+        }
+        DefinedSystem sys = definedSystemsList.get(index - 1);
+        String plex = sys.getSysplexName() != null ? sys.getSysplexName() : "";
+        String system = sys.getSystemName() != null ? sys.getSystemName() : "";
+        return new String[]{plex, system};
+    }
+
+    private void refreshSymbols(Project project) {
+        String[] scope = getSelectedSysplexAndSystem();
+        String sysplexName = scope[0];
+        String systemName = scope[1];
+        boolean isSymbol = symbolTypeCombo.getSelectedIndex() == 0;
+
+        String typeLabel = isSymbol ? "symbols" : "variables";
+        symbolsStatusLabel.setText("Loading z/OS " + typeLabel + "...");
+
+        runBackground(project, () -> {
+            List<VariableResponse> list = new SymbolService(ZoweConnectionProvider.current())
+                    .getSymbolsOrVariables(sysplexName, systemName, isSymbol);
+
+            SwingUtilities.invokeLater(() -> {
+                rawSymbolsList = list != null ? list : Collections.emptyList();
+                applySymbolsFilter();
+                String targetName = systemName.isBlank() ? "Local System" : systemName;
+                symbolsStatusLabel.setText("Loaded " + rawSymbolsList.size() + " " + typeLabel + " for " + targetName);
+            });
+        });
+    }
+
+    private void applySymbolsFilter() {
+        String filter = symbolFilterField.getText().trim().toLowerCase(Locale.ROOT);
+        symbolsTableModel.setRowCount(0);
+
+        for (VariableResponse var : rawSymbolsList) {
+            String name = var.getName() != null ? var.getName() : "";
+            String value = var.getValue() != null ? var.getValue() : "";
+            String desc = var.getDescription() != null ? var.getDescription() : "";
+
+            if (filter.isBlank()
+                    || name.toLowerCase(Locale.ROOT).contains(filter)
+                    || value.toLowerCase(Locale.ROOT).contains(filter)
+                    || desc.toLowerCase(Locale.ROOT).contains(filter)) {
+                symbolsTableModel.addRow(new Object[]{name, value, desc});
+            }
+        }
+    }
+
+    private void addVariable(Project project) {
+        String[] scope = getSelectedSysplexAndSystem();
+        String sysplex = scope[0];
+        String system = scope[1];
+
+        JPanel dialogPanel = new JPanel(new GridLayout(5, 2, 5, 5));
+        JBTextField nameField = new JBTextField();
+        JBTextField valueField = new JBTextField();
+        JBTextField descField = new JBTextField();
+        JBTextField sysplexField = new JBTextField(sysplex);
+        JBTextField systemField = new JBTextField(system);
+
+        dialogPanel.add(new JBLabel("Sysplex Name:"));
+        dialogPanel.add(sysplexField);
+        dialogPanel.add(new JBLabel("System Name:"));
+        dialogPanel.add(systemField);
+        dialogPanel.add(new JBLabel("Variable Name:"));
+        dialogPanel.add(nameField);
+        dialogPanel.add(new JBLabel("Value:"));
+        dialogPanel.add(valueField);
+        dialogPanel.add(new JBLabel("Description:"));
+        dialogPanel.add(descField);
+
+        int option = JOptionPane.showConfirmDialog(
+                null,
+                dialogPanel,
+                "Add z/OSMF System Variable",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
+
+        if (option != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        String varName = nameField.getText().trim();
+        String varValue = valueField.getText().trim();
+        String varDesc = descField.getText().trim();
+        String targetPlex = sysplexField.getText().trim();
+        String targetSys = systemField.getText().trim();
+
+        if (varName.isBlank()) {
+            Messages.showErrorDialog(project, "Variable Name cannot be empty.", "Add Variable");
+            return;
+        }
+
+        setState("Creating variable " + varName + "...");
+
+        runBackground(project, () -> {
+            new SymbolService(ZoweConnectionProvider.current())
+                    .createOrUpdateVariable(targetPlex, targetSys, varName, varValue, varDesc);
+
+            SwingUtilities.invokeLater(() -> {
+                setState("Created variable " + varName + ".");
+                refreshSymbols(project);
+            });
+        });
+    }
+
+    private void editSelectedVariable(Project project) {
+        int selectedRow = symbolsTable.getSelectedRow();
+        if (selectedRow == -1) {
+            Messages.showInfoMessage(project, "Select a variable to edit first.", "Edit Variable");
+            return;
+        }
+        if (symbolTypeCombo.getSelectedIndex() == 0) {
+            Messages.showInfoMessage(project, "System Symbols are read-only parmlib symbols.", "Edit Symbol");
+            return;
+        }
+
+        int modelRow = symbolsTable.convertRowIndexToModel(selectedRow);
+        String name = (String) symbolsTableModel.getValueAt(modelRow, 0);
+        String currentValue = (String) symbolsTableModel.getValueAt(modelRow, 1);
+        String currentDesc = (String) symbolsTableModel.getValueAt(modelRow, 2);
+
+        String[] scope = getSelectedSysplexAndSystem();
+
+        JPanel dialogPanel = new JPanel(new GridLayout(5, 2, 5, 5));
+        JBLabel nameLabel = new JBLabel(name);
+        JBTextField valueField = new JBTextField(currentValue);
+        JBTextField descField = new JBTextField(currentDesc);
+        JBTextField sysplexField = new JBTextField(scope[0]);
+        JBTextField systemField = new JBTextField(scope[1]);
+
+        dialogPanel.add(new JBLabel("Sysplex Name:"));
+        dialogPanel.add(sysplexField);
+        dialogPanel.add(new JBLabel("System Name:"));
+        dialogPanel.add(systemField);
+        dialogPanel.add(new JBLabel("Variable Name:"));
+        dialogPanel.add(nameLabel);
+        dialogPanel.add(new JBLabel("Value:"));
+        dialogPanel.add(valueField);
+        dialogPanel.add(new JBLabel("Description:"));
+        dialogPanel.add(descField);
+
+        int option = JOptionPane.showConfirmDialog(
+                null,
+                dialogPanel,
+                "Edit z/OSMF Variable: " + name,
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
+
+        if (option != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        String newValue = valueField.getText().trim();
+        String newDesc = descField.getText().trim();
+        String targetPlex = sysplexField.getText().trim();
+        String targetSys = systemField.getText().trim();
+
+        setState("Updating variable " + name + "...");
+
+        runBackground(project, () -> {
+            new SymbolService(ZoweConnectionProvider.current())
+                    .createOrUpdateVariable(targetPlex, targetSys, name, newValue, newDesc);
+
+            SwingUtilities.invokeLater(() -> {
+                setState("Updated variable " + name + ".");
+                refreshSymbols(project);
+            });
+        });
+    }
+
+    private void renameSelectedVariable(Project project) {
+        int selectedRow = symbolsTable.getSelectedRow();
+        if (selectedRow == -1) {
+            Messages.showInfoMessage(project, "Select a variable to rename first.", "Rename Variable");
+            return;
+        }
+        if (symbolTypeCombo.getSelectedIndex() == 0) {
+            Messages.showInfoMessage(project, "System Symbols are read-only parmlib symbols.", "Rename Symbol");
+            return;
+        }
+
+        int modelRow = symbolsTable.convertRowIndexToModel(selectedRow);
+        String oldName = (String) symbolsTableModel.getValueAt(modelRow, 0);
+        String currentValue = (String) symbolsTableModel.getValueAt(modelRow, 1);
+        String currentDesc = (String) symbolsTableModel.getValueAt(modelRow, 2);
+
+        String newName = Messages.showInputDialog(
+                project,
+                "Enter new variable name for '" + oldName + "':",
+                "Rename Variable",
+                Messages.getQuestionIcon(),
+                oldName,
+                null);
+
+        if (newName == null || newName.isBlank() || newName.equals(oldName)) {
+            return;
+        }
+
+        String[] scope = getSelectedSysplexAndSystem();
+
+        setState("Renaming variable " + oldName + " to " + newName + "...");
+
+        runBackground(project, () -> {
+            SymbolService service = new SymbolService(ZoweConnectionProvider.current());
+            service.createOrUpdateVariable(scope[0], scope[1], newName, currentValue, currentDesc);
+            service.deleteVariables(scope[0], scope[1], List.of(oldName));
+
+            SwingUtilities.invokeLater(() -> {
+                setState("Renamed variable " + oldName + " to " + newName + ".");
+                refreshSymbols(project);
+            });
+        });
+    }
+
+    private void deleteSelectedVariables(Project project) {
+        int[] selectedRows = symbolsTable.getSelectedRows();
+        if (selectedRows.length == 0) {
+            Messages.showInfoMessage(project, "Select at least one variable to delete.", "Delete Variable");
+            return;
+        }
+        if (symbolTypeCombo.getSelectedIndex() == 0) {
+            Messages.showInfoMessage(project, "System Symbols are read-only parmlib symbols.", "Delete Symbol");
+            return;
+        }
+
+        List<String> namesToDelete = new ArrayList<>();
+        for (int r : selectedRows) {
+            int modelRow = symbolsTable.convertRowIndexToModel(r);
+            namesToDelete.add((String) symbolsTableModel.getValueAt(modelRow, 0));
+        }
+
+        int confirm = Messages.showYesNoDialog(
+                project,
+                "Are you sure you want to delete variable(s): " + String.join(", ", namesToDelete) + "?",
+                "Delete Variables",
+                "Delete",
+                "Cancel",
+                Messages.getQuestionIcon());
+
+        if (confirm != Messages.YES) {
+            return;
+        }
+
+        String[] scope = getSelectedSysplexAndSystem();
+
+        setState("Deleting variable(s)...");
+
+        runBackground(project, () -> {
+            new SymbolService(ZoweConnectionProvider.current())
+                    .deleteVariables(scope[0], scope[1], namesToDelete);
+
+            SwingUtilities.invokeLater(() -> {
+                setState("Deleted " + namesToDelete.size() + " variable(s).");
+                refreshSymbols(project);
+            });
+        });
+    }
+
+    private void copySelectedTableCell(int col) {
+        int selectedRow = symbolsTable.getSelectedRow();
+        if (selectedRow != -1) {
+            int modelRow = symbolsTable.convertRowIndexToModel(selectedRow);
+            String val = (String) symbolsTableModel.getValueAt(modelRow, col);
+            if (val != null) {
+                Toolkit.getDefaultToolkit().getSystemClipboard()
+                        .setContents(new StringSelection(val), null);
+            }
         }
     }
 }
