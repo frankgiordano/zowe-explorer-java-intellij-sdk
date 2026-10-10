@@ -30,7 +30,7 @@ dependencies {
 
 intellijPlatform {
     pluginConfiguration {
-        id = "com.frankgiordano.zos.navigator"
+        id = "com.frankgiordano.zowe.explorer.java"
         name = "z/OS Navigator for Zowe"
         version = project.version.toString()
         ideaVersion {
